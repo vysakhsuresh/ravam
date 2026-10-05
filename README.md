@@ -14,12 +14,19 @@ It is free, open source, and has no accounts, no ads and no subscription.
 
 ## Status
 
-**Pre-alpha. Nothing works yet.** This repository currently holds research,
-a plan, and a design system. No app has been built.
+**Pre-alpha.** The measurement engine is written and tested; the app around it
+is a skeleton. Four experiments still have to run on real hardware before the
+capture path is settled — they are in [`PLAN.md`](PLAN.md), and any one of them
+can change the shape of the project.
 
-Before any product code is written, four experiments have to run on real
-hardware. They are specified in [`PLAN.md`](PLAN.md) and any one of them can
-change the shape of the project. Read that first.
+```
+./gradlew :core:test      # 23 tests, no Android SDK needed, no device needed
+./scripts/fetch-fonts.sh  # once, before building the app
+```
+
+`:core` is plain Kotlin and builds anywhere. `:app` is included in the build
+only when an Android SDK is present, so the part worth testing is never gated
+behind an SDK install.
 
 ## What it will do
 
@@ -57,7 +64,8 @@ the responsibility is yours. See [`docs/legal.md`](docs/legal.md).
 
 ## Prior art, credited
 
-Ravam exists because other people solved the hard parts in the open first:
+Ravam copies no one's code. It does stand on work others published first, and
+those people deserve naming:
 
 - **[BCR](https://github.com/chenxiaolong/BCR)** — the reference for doing this
   cleanly on rooted and system-app installs.
@@ -70,9 +78,8 @@ Ravam is not affiliated with or endorsed by any of them.
 
 ## Licence
 
-To be decided — see the strategic question in [`PLAN.md`](PLAN.md). If Ravam
-ends up building on CallVault's code it inherits **GPL-3.0-or-later with
-Section 7 additional terms**, which is the likely outcome.
+To be decided, and genuinely open. Ravam is written from scratch and inherits no
+licence from anyone — see [`PLAN.md`](PLAN.md) §0.
 
 ---
 

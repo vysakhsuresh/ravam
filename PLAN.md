@@ -6,40 +6,52 @@ document it is marked **confirmed**; where it is inference it says so.
 
 ---
 
-## 0. The decision that comes before everything
+## 0. The decision, made
 
-**CallVault already exists, and it is much bigger than we assumed.**
+**Ravam is written from scratch. Nothing is copied from anyone.**
 
-`github.com/madkongo/CallVault` is **654 Kotlin files, ~100,000 lines**, with
-on-device transcription (whisper.cpp), on-device summarisation (llama.cpp +
-Gemma), speaker labels, waveform playback, transcript search, tags, export to
-five formats, app lock, retention policy, signed in-app updates, and fifteen
-translations. It is a fork of ShizuCallRecorder, re-architected to run
-**self-contained over embedded ADB** so it needs neither root nor Shizuku.
+Forking CallVault was on the table and was rejected. It would have bought ~100,000
+lines and cost independence: GPL-3.0 forever, a permanent "this is a fork of" banner,
+and a product defined by someone else's architecture.
 
-Almost every "moat" from the first draft of this plan — reliability, local-only,
-both-sides capture — is either already there or is a week of their time away.
+### What "don't copy" means in practice
 
-So there are three honest options:
+The distinction matters, so it is written down rather than assumed:
 
-| | Path | Cost | Risk |
-|---|---|---|---|
-| **A** | **Fork CallVault.** Inherit 100k lines, add the layer it is missing. | Weeks | GPL-3.0 + §7 obligations; we are downstream forever |
-| **B** | **Build fresh.** | Years, realistically | We lose, slowly |
-| **C** | **Contribute upstream.** Send BOTIM + consent to CallVault. | Days | Cheapest and most useful to the world; you own nothing |
+| | |
+|---|---|
+| **Not ours, never used** | Their source, their structure, their naming, their resources. No file in this repo derives from theirs. |
+| **Nobody's property** | `CAPTURE_VOICE_COMMUNICATION_OUTPUT`, `isClientSilenced()`, the AOSP audio policy, Shizuku's shell binding. These are platform APIs and public documentation. Using them is no more copying than using a `TextView`. |
 
-**Recommendation: A.** Its licence explicitly permits forking, with four
-conditions, all of which we meet comfortably:
+Everything here is built from AOSP source and Android's own documentation. Ravam
+therefore carries no inherited licence and is free to choose its own.
 
-1. Rename the app — *Ravam* ✅
-2. Change the package ID — `com.layerbit.ravam` ✅
-3. **Prominently disclose** that it is a fork ✅
-4. **Visible attribution + link** to the original in an About screen ✅
+### What we are actually betting on
 
-Ravam then has to be GPL-3.0-or-later and fully open source. Given the promises
-in the README, that is a fit, not a cost.
+Not a longer feature list — that race is lost before it starts, and it is the wrong
+race. The bet is a different idea about what a recording *is*:
 
-**This is your call, and nothing below should be built until it is made.**
+> **A recording is not a file that happened. It is a measurement, with its evidence
+> attached.**
+
+Every app in this category treats capture as fire-and-forget: start the stream, write
+bytes, hope. That is why they all ship the same failure — a file of the right length
+containing one voice, or none, discovered days later.
+
+Ravam does not hand over a recording it has not measured. Concretely:
+
+1. **Nothing is green unless two voices were measured.** `TwoVoiceAnalyzer` decides,
+   and it is a plain JVM module with 23 tests that run in seconds on any machine.
+2. **Failure is caught while the call is still live.** `LiveIntegrityMonitor` watches
+   as it records and distinguishes *the stream died* from *the far side went missing* —
+   because those need different instructions and only one of them the user can fix.
+   Nothing in this category does this.
+3. **The device is tested, not assumed.** The probe measures what this handset really
+   does, per app, before anyone relies on it.
+4. **No `INTERNET` permission.** "Nothing leaves your phone" becomes a claim the
+   manifest proves. Accepted cost: no cloud, no in-app updates, no downloaded models.
+5. **A consent layer**, which nobody has at all.
+
 
 ---
 
@@ -345,8 +357,7 @@ Recorded so nobody re-derives them wrongly.
 
 ## 9. Open questions
 
-1. **Fork CallVault, or not?** Section 0. Blocks everything.
-2. **E1 result** — earpiece, blanked screen, Bluetooth. Blocks the architecture.
+1. **E1 result** — earpiece, blanked screen, Bluetooth. Blocks the architecture.
 3. **Accept the no-`INTERNET` constraint?** It is the strongest trust claim
    available and it costs in-app updates and on-device transcription models.
 4. `ravam.app` / `ravam.in` availability — unverified, needs a registrar check.
