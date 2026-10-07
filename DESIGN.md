@@ -158,7 +158,7 @@ still. A recording indicator that bounces while someone is talking is a bug.
 ### Support button
 Lifted from `.premium-bmc-btn`. Lives in Settings, not floating over the app.
 
-> ☕ **Support Layerbit** → `https://www.buymeacoffee.com/layerbit`
+> **Support Layerbit** → `https://www.buymeacoffee.com/layerbit`
 
 Glass pill: `CardBg` fill, `CoffeeEdge` 1dp border, 30dp radius, Space Grotesk
 600, blur 12. Shown once, in one place. Never on the recording screen, never

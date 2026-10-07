@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -17,6 +19,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.layerbit.ravam.R
 import com.layerbit.ravam.audio.Voices
 import com.layerbit.ravam.consent.ConsentController
 import com.layerbit.ravam.jurisdiction.ConsentRule
@@ -140,10 +143,11 @@ fun HomeScreen(
                             .then(if (item.ready) Modifier else Modifier.clickable { item.action?.let(onRequestSetup) }),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            if (item.ready) "✓" else "○",
-                            color = if (item.ready) RavamColors.Success else RavamColors.TextFaint,
-                            style = MaterialTheme.typography.titleMedium,
+                        Icon(
+                            painter = painterResource(if (item.ready) R.drawable.ic_check else R.drawable.ic_circle),
+                            contentDescription = if (item.ready) "Done" else "To do",
+                            tint = if (item.ready) RavamColors.Success else RavamColors.TextFaint,
+                            modifier = Modifier.size(20.dp),
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {

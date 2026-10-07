@@ -7,8 +7,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.res.painterResource
+import com.layerbit.ravam.R
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,12 +96,12 @@ private fun RecordingRow(
     onDelete: () -> Unit,
 ) = RavamCard {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            if (playing) "❙❙" else "▶",
-            color = RavamColors.Accent,
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.clip(RoundedCornerShape(24.dp)).clickable(onClick = onPlay)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
+        Icon(
+            painter = painterResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play),
+            contentDescription = if (playing) "Pause" else "Play",
+            tint = RavamColors.Accent,
+            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(24.dp))
+                .clickable(onClick = onPlay).padding(4.dp),
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -109,11 +112,11 @@ private fun RecordingRow(
             )
         }
         Spacer(Modifier.width(8.dp))
-        Text(
-            if (rec.starred) "★" else "☆",
-            color = if (rec.starred) RavamColors.Warning else RavamColors.TextFaint,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.clickable(onClick = onStar).padding(6.dp),
+        Icon(
+            painter = painterResource(if (rec.starred) R.drawable.ic_star_filled else R.drawable.ic_star),
+            contentDescription = if (rec.starred) "Starred" else "Not starred",
+            tint = if (rec.starred) RavamColors.Warning else RavamColors.TextFaint,
+            modifier = Modifier.size(28.dp).clickable(onClick = onStar).padding(4.dp),
         )
     }
     Spacer(Modifier.height(10.dp))

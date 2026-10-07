@@ -212,7 +212,7 @@ is more likely to generalise than one from a Samsung or Xiaomi.
 |---|---|---|
 | **E0** | `adb shell dumpsys package com.catalinagroup.callrecorder \| grep userId=` (and `.helper`); `adb shell dumpsys media.audio_policy \| grep -A6 "UID Policy"` | Whether Cube shares a UID — one APK or two |
 | **E1** | Re-run the working BOTIM recording on **earpiece**, with the **screen allowed to blank**, and on **Bluetooth** | Whether the observed result generalises, and whether `WHILE_AWAKE` silences us |
-| **E2** ★ | Shizuku/ADB throwaway: dynamic `AudioPolicy`, `LOOPBACK\|RENDER`, `voiceCommunicationCaptureAllowed(true)` + `allowPrivilegedPlaybackCapture(true)`, dump PCM during a **BOTIM** call | Whether the deterministic VoIP path works for BOTIM specifically |
+| **E2** (key) | Shizuku/ADB throwaway: dynamic `AudioPolicy`, `LOOPBACK\|RENDER`, `voiceCommunicationCaptureAllowed(true)` + `allowPrivilegedPlaybackCapture(true)`, dump PCM during a **BOTIM** call | Whether the deterministic VoIP path works for BOTIM specifically |
 | **E3** | Can a **backgrounded** app start a `microphone` FGS and get non-zero PCM on Android 14+? Test at targetSdk 34 and 30 | Whether the accessibility tier works for **incoming** calls at all |
 
 **E1 first.** It is free, it needs no code, and it reconciles the one piece of
@@ -347,7 +347,7 @@ Recorded so nobody re-derives them wrongly.
 
 | Earlier claim | Correction |
 |---|---|
-| Cube ACR is a weak 2.3★ incumbent | **4.1★, 909K reviews, 50M+ installs** on Play. The 2.3 was PissedConsumer, four reviews. |
+| Cube ACR is a weak 2.3 stars incumbent | **4.1 stars, 909K reviews, 50M+ installs** on Play. The 2.3 was PissedConsumer, four reviews. |
 | India is a one-party-consent country | "One-party consent" is American framing. India has **no such statute**. *Vibhor Garg v. Neha* (2025) concerned **admissibility** between spouses, not general legality. Legality separately engages the Telegraph Act s.25, the IT Act, and post-*Puttaswamy* privacy. |
 | A spoken announcement makes recording legal in an all-party country | It does **not**. Build it because it is decent and useful, never tell a user in Dubai it makes them lawful. |
 | The carve-out is byte-identical across versions | Semantically identical. The text differs. |
