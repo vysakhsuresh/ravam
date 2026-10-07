@@ -165,7 +165,7 @@ Glass pill: `CardBg` fill, `CoffeeEdge` 1dp border, 30dp radius, Space Grotesk
 near a call, never as an interstitial.
 
 ### Get help
-> **Get help** → `https://layerbit.com/contact.html`
+> **Get help** → `the in-app Get Help dialog (email or WhatsApp)`
 
 ### Powered by
 Footer of the About screen, mirroring the site:

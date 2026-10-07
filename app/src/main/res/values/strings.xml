@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Ravam</string>
+    <string name="accessibility_description">Android only lets a few kinds of app hear the other person on a call. Turning this on is what allows Ravam to record both sides. Ravam reads nothing from your screen — it needs only the permission itself.</string>
 </resources>

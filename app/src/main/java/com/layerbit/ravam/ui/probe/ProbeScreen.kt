@@ -14,7 +14,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.layerbit.ravam.capture.TierStatus
 import com.layerbit.ravam.ui.components.Measurement
 import com.layerbit.ravam.ui.components.RavamCard
-import com.layerbit.ravam.ui.components.SupportRow
+import com.layerbit.ravam.ui.components.BrandFooter
 import com.layerbit.ravam.ui.components.VerdictBadge
 import com.layerbit.ravam.ui.theme.RavamColors
 
@@ -142,7 +142,7 @@ fun ProbeScreen(
         }
 
         Spacer(Modifier.height(36.dp))
-        SupportRow(onOpen = onOpenUrl)
+        BrandFooter(onOpenUrl = onOpenUrl)
         Spacer(Modifier.height(40.dp))
     }
 }

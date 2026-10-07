@@ -14,10 +14,15 @@ It is free, open source, and has no accounts, no ads and no subscription.
 
 ## Status
 
-**Pre-alpha.** The measurement engine is written and tested; the app around it
-is a skeleton. Four experiments still have to run on real hardware before the
-capture path is settled — they are in [`PLAN.md`](PLAN.md), and any one of them
-can change the shape of the project.
+**Pre-alpha.** The measurement engine and the recording path are written; 30
+tests cover the parts that can be proved without a handset. Four experiments
+still have to run on real hardware before the capture path is settled — they
+are in [`PLAN.md`](PLAN.md), and any one of them can change the shape of the
+project.
+
+What works on paper and is **not yet proven on a device**: whether the far side
+actually reaches the buffer, and whether a microphone foreground service can be
+started for an *incoming* call on Android 14+. Treat both as open.
 
 ```
 ./gradlew :core:test      # 23 tests, no Android SDK needed, no device needed
@@ -83,5 +88,5 @@ licence from anyone — see [`PLAN.md`](PLAN.md) §0.
 
 ---
 
-<sub>A [Layerbit Technologies](https://layerbit.com) project ·
+<sub>A [Layerbit Technologies](https://layerbit.co.in) project ·
 [Support Layerbit](https://www.buymeacoffee.com/layerbit)</sub>
