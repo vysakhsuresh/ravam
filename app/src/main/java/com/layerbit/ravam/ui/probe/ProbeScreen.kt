@@ -1,13 +1,19 @@
 package com.layerbit.ravam.ui.probe
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,6 +37,8 @@ fun ProbeScreen(
     vm: ProbeViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) { vm.refresh() }
 
     Column(
         Modifier
@@ -106,9 +114,26 @@ fun ProbeScreen(
             )
             Spacer(Modifier.height(16.dp))
 
+            Text(
+                if (state.running) "Testing…" else "Test my phone",
+                color = RavamColors.BgBase,
+                style = MaterialTheme.typography.labelLarge,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                    .background(if (state.running) RavamColors.TextFaint else RavamColors.Accent)
+                    .then(
+                        if (state.running) Modifier
+                        else Modifier.clickable { vm.runCaptureTests() },
+                    )
+                    .padding(vertical = 14.dp),
+            )
+            Spacer(Modifier.height(16.dp))
+
             if (state.results.isEmpty()) {
                 Text(
-                    if (state.running) "Testing…" else "Not tested yet.",
+                    if (state.running) "Measuring each audio source…" else "Not tested yet.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = RavamColors.TextFaint,
                 )

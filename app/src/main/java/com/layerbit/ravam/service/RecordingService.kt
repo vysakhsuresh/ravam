@@ -86,6 +86,22 @@ class RecordingService : LifecycleService() {
                 notify(buildNotification(tier, status.health, status.elapsedMs))
             }
             RecordingLog.record(outcome)
+
+            // Write the human-readable sidecar so the recording appears in the library with
+            // its verdict and channel. No legal flags are stored — only what a user wants to
+            // see: a name, the time, how long, and whether both sides were heard (PLAN.md §6).
+            outcome.file?.let { file ->
+                val name = java.text.SimpleDateFormat("d MMM yyyy, h:mm a", java.util.Locale.getDefault())
+                    .format(java.util.Date(file.lastModified()))
+                com.layerbit.ravam.data.RecordingStore.writeSidecar(
+                    context = this@RecordingService,
+                    wav = file,
+                    name = name,
+                    durationMs = outcome.durationMs,
+                    voices = outcome.verdict?.voices ?: com.layerbit.ravam.audio.Voices.INCONCLUSIVE,
+                    channel = "Phone",
+                )
+            }
             recorder = null
             ServiceCompat.stopForeground(this@RecordingService, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()
