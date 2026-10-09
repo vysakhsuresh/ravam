@@ -38,7 +38,11 @@ object RavamColors {
 
     // Layerbit brand furniture — values shared with LayerLink's core module
     val AccentDim     = Color(0xFF1E3A52)   // footer divider
-    val CoffeeText    = Color(0xFFE4CFA1)   // "Buy me a coffee" — beige, against Get Help's blue
+    // "Buy me a coffee", against Get Help's blue. #FFC107 is the family's coffee amber —
+    // the retired CoffeeEdge pill border was this exact hue at 30% alpha. Deliberately not
+    // [Warning], which is the same sort of yellow but means something is wrong; a footer
+    // link borrowing a state colour would make the two impossible to tell apart later.
+    val CoffeeText    = Color(0xFFFFC107)
     val DialogBg      = Color(0xFF14161E)   // Get Help surface — opaque, it sits over content
     val ActionRowBg   = Color(0xFF1C2536)   // a row inside that dialog
 }
