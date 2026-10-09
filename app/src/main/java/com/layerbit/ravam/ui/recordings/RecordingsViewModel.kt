@@ -13,6 +13,8 @@ data class RecordingsState(
     val recordings: List<Recording> = emptyList(),
     val query: String = "",
     val playingId: String? = null,
+    /** Set when a recording could not be played, so the list can say so instead of ignoring the tap. */
+    val playbackError: String? = null,
 )
 
 class RecordingsViewModel(app: Application) : AndroidViewModel(app) {
@@ -40,10 +42,13 @@ class RecordingsViewModel(app: Application) : AndroidViewModel(app) {
         }
 
     fun togglePlay(recording: Recording) {
-        player.toggle(recording.file, recording.id) {
+        val played = player.toggle(recording.file, recording.id) {
             _state.value = _state.value.copy(playingId = null)
         }
-        _state.value = _state.value.copy(playingId = player.currentId)
+        _state.value = _state.value.copy(
+            playingId = player.currentId,
+            playbackError = if (played) null else "Couldn't play “${recording.displayName}”.",
+        )
     }
 
     fun toggleStar(recording: Recording) {

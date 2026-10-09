@@ -63,6 +63,14 @@ fun RecordingsScreen(vm: RecordingsViewModel = viewModel()) {
         }
         Spacer(Modifier.height(12.dp))
 
+        state.playbackError?.let { message ->
+            Text(
+                message,
+                color = RavamColors.Danger, style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(bottom = 10.dp),
+            )
+        }
+
         val list = vm.visible
         if (list.isEmpty()) {
             Spacer(Modifier.height(48.dp))
