@@ -85,7 +85,10 @@ fun BrandFooter(
             }
         }
 
-        Spacer(Modifier.height(22.dp))
+        // 2dp, not 10: the links already carry 8dp of tap padding below them, so this
+        // spacer is only the remainder needed to match the 10dp above them. The three
+        // lines are one block and the two gaps inside it have to be equal.
+        Spacer(Modifier.height(2.dp))
         Text(
             "Nothing you record leaves this phone.",
             color = RavamColors.TextFaint,
