@@ -8,6 +8,18 @@
   Drawn in the Layerbit grammar — 4-unit stroke at the source scale, round joins,
   near-white mark, one #00F2FE accent — so it sits beside the Layerbit logo as a
   sibling rather than a stranger.
+
+  Sized at 0.78 of the original drawing. An adaptive icon is a 108-unit canvas of
+  which the launcher only guarantees the middle 72, and the mark was 62.1 across —
+  86% of that safe zone, so on a phone it ran very nearly edge to edge of the tile.
+  Two things made that worse than the numbers suggest: the mark is much wider than
+  it is tall, so the width is all anyone sees, and the background is #0A0C10, which
+  on a dark launcher is invisible — there is no tile to contain it, only floating
+  rings. At 0.78 the ink is 48.4 across, about 45% of the canvas, which is where
+  most glyphs sit and leaves the mark room to read as a mark.
+
+  Every number below is the original times 0.78: radius 18.9 -> 14.742, stroke
+  5.4 -> 4.212, centre offset 9.45 -> 7.371, lens tips 16.362 -> 12.762.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
@@ -15,13 +27,13 @@
 
     <!-- the shared part, drawn first so the rings sit over its seams -->
     <path android:fillColor="#00F2FE"
-        android:pathData="M54,37.638 A18.9,18.9 0 0,1 54,70.362 A18.9,18.9 0 0,1 54,37.638 Z" />
+        android:pathData="M54,41.238 A14.742,14.742 0 0,1 54,66.762 A14.742,14.742 0 0,1 54,41.238 Z" />
 
-    <path android:strokeColor="#F8FAFC" android:strokeWidth="5.4"
+    <path android:strokeColor="#F8FAFC" android:strokeWidth="4.212"
         android:fillColor="#00000000" android:strokeLineJoin="round"
-        android:pathData="M44.55,54 m-18.9,0 a18.9,18.9 0 1,0 37.8,0 a18.9,18.9 0 1,0 -37.8,0" />
+        android:pathData="M46.629,54 m-14.742,0 a14.742,14.742 0 1,0 29.484,0 a14.742,14.742 0 1,0 -29.484,0" />
 
-    <path android:strokeColor="#F8FAFC" android:strokeWidth="5.4"
+    <path android:strokeColor="#F8FAFC" android:strokeWidth="4.212"
         android:fillColor="#00000000" android:strokeLineJoin="round"
-        android:pathData="M63.45,54 m-18.9,0 a18.9,18.9 0 1,0 37.8,0 a18.9,18.9 0 1,0 -37.8,0" />
+        android:pathData="M61.371,54 m-14.742,0 a14.742,14.742 0 1,0 29.484,0 a14.742,14.742 0 1,0 -29.484,0" />
 </vector>
