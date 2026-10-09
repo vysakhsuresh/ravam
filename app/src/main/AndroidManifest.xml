@@ -13,6 +13,13 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Optional, used only if granted: the number on a carrier call, and the contact
+         name to label it. Ravam works without either; the recording is just labelled
+         "Unknown" instead of by name. -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <!-- Package visibility: without this the probe cannot see whether a VoIP app is
          installed, and reports a false negative on every Android 11+ device. -->
@@ -51,6 +58,38 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- The call trigger: fires on every carrier call, app open or not. This is what
+             makes Ravam a call recorder rather than a sound recorder. -->
+        <receiver
+            android:name=".detect.PhoneCallReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Re-arms housekeeping and recovers crash-orphaned recordings after a restart. -->
+        <receiver
+            android:name=".detect.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Shares a recording with other apps without exposing the private folder.
+             No INTERNET permission, so "share" means the user's own chosen target
+             (files, Bluetooth, a messenger) — never an upload by Ravam. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <activity
             android:name=".MainActivity"

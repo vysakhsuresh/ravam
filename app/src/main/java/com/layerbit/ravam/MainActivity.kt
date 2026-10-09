@@ -33,7 +33,11 @@ class MainActivity : ComponentActivity() {
         requestCorePermissions()
         setContent {
             RavamTheme {
-                RavamRoot(onRequestSetup = ::handleSetup, onOpenUrl = ::openUrl)
+                RavamRoot(
+                    onRequestSetup = ::handleSetup,
+                    onOpenUrl = ::openUrl,
+                    onDeclineTerms = { finish() },
+                )
             }
         }
     }

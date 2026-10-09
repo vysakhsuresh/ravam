@@ -40,6 +40,7 @@ class RecordingService : LifecycleService() {
 
     private var recorder: CallRecorder? = null
     private var startedAt: Long = 0
+    private var activeChannel: String = "Phone"
 
     override fun onBind(intent: Intent): IBinder? {
         super.onBind(intent)
@@ -56,6 +57,7 @@ class RecordingService : LifecycleService() {
                     ?.let { runCatching { CaptureTier.valueOf(it) }.getOrNull() }
                     ?: CaptureTier.ACCESSIBILITY,
                 label = intent?.getStringExtra(EXTRA_LABEL) ?: "call",
+                channel = intent?.getStringExtra(EXTRA_CHANNEL) ?: "Phone",
             )
         }
         // Not START_STICKY: a service the system restarts after killing us would come back
@@ -63,8 +65,9 @@ class RecordingService : LifecycleService() {
         return START_NOT_STICKY
     }
 
-    private fun startRecording(tier: CaptureTier, label: String) {
+    private fun startRecording(tier: CaptureTier, label: String, channel: String) {
         if (recorder != null) return
+        activeChannel = channel
 
         createChannel()
         ServiceCompat.startForeground(
@@ -99,7 +102,7 @@ class RecordingService : LifecycleService() {
                     name = name,
                     durationMs = outcome.durationMs,
                     voices = outcome.verdict?.voices ?: com.layerbit.ravam.audio.Voices.INCONCLUSIVE,
-                    channel = "Phone",
+                    channel = activeChannel,
                 )
             }
             recorder = null
@@ -188,15 +191,17 @@ class RecordingService : LifecycleService() {
         const val ACTION_STOP = "com.layerbit.ravam.STOP"
         const val EXTRA_TIER = "tier"
         const val EXTRA_LABEL = "label"
+        const val EXTRA_CHANNEL = "channel"
 
         /** App-private, so nothing here is readable by other apps or picked up by media scanners. */
         fun recordingsDir(context: Context): File =
             File(context.filesDir, "recordings").apply { mkdirs() }
 
-        fun start(context: Context, tier: CaptureTier, label: String) {
+        fun start(context: Context, tier: CaptureTier, label: String, channel: String = "Phone") {
             val i = Intent(context, RecordingService::class.java)
                 .putExtra(EXTRA_TIER, tier.name)
                 .putExtra(EXTRA_LABEL, label)
+                .putExtra(EXTRA_CHANNEL, channel)
             context.startForegroundService(i)
         }
 

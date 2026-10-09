@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -122,12 +123,40 @@ private fun RecordingRow(
     Spacer(Modifier.height(10.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         VerdictBadge(rec.voices)
-        Text(
-            "Delete",
-            color = RavamColors.TextFaint,
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.clickable(onClick = onDelete).padding(6.dp),
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            val context = LocalContext.current
+            Text(
+                "Share",
+                color = RavamColors.Accent,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.clickable { shareRecording(context, rec.file) }.padding(6.dp),
+            )
+            Text(
+                "Delete",
+                color = RavamColors.TextFaint,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.clickable(onClick = onDelete).padding(6.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Hands a recording to another app of the user's choosing, through a granted FileProvider URI.
+ * Ravam has no INTERNET permission, so "share" is always the user picking a target — never an
+ * upload by the app.
+ */
+private fun shareRecording(context: android.content.Context, file: java.io.File) {
+    runCatching {
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            context, "${context.packageName}.fileprovider", file,
         )
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "audio/x-wav"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Share recording"))
     }
 }
 
