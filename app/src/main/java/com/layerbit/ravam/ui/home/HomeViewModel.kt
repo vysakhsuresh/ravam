@@ -82,7 +82,9 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun startManualRecording() {
-        RecordingService.start(getApplication(), _state.value.tier, "test-${nowLabel()}")
+        RecordingService.start(
+            getApplication(), _state.value.tier, "test-${nowLabel()}", isTest = true,
+        )
         _state.value = _state.value.copy(isRecording = true)
     }
 

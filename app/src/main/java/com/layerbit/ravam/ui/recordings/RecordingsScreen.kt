@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -25,6 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.layerbit.ravam.domain.Recording
 import com.layerbit.ravam.ui.components.RavamCard
+import com.layerbit.ravam.ui.components.StatusBadge
 import com.layerbit.ravam.ui.components.VerdictBadge
 import com.layerbit.ravam.ui.theme.Numeric
 import com.layerbit.ravam.ui.theme.RavamColors
@@ -130,7 +132,14 @@ private fun RecordingRow(
     }
     Spacer(Modifier.height(10.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        VerdictBadge(rec.voices)
+        // A mic test has no far side, so a both-sides verdict would be a result about a
+        // question it never asked. Home says "Mic works" for the same file; the library
+        // must not contradict it with a grey "Not enough speech".
+        if (rec.isTest) {
+            StatusBadge("Mic test", RavamColors.TextMuted, Color(0x14FFFFFF))
+        } else {
+            VerdictBadge(rec.voices)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             val context = LocalContext.current
             Text(

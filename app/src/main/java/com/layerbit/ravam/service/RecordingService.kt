@@ -58,6 +58,7 @@ class RecordingService : LifecycleService() {
                     ?: CaptureTier.ACCESSIBILITY,
                 label = intent?.getStringExtra(EXTRA_LABEL) ?: "call",
                 channel = intent?.getStringExtra(EXTRA_CHANNEL) ?: "Phone",
+                isTest = intent?.getBooleanExtra(EXTRA_IS_TEST, false) ?: false,
             )
         }
         // Not START_STICKY: a service the system restarts after killing us would come back
@@ -65,7 +66,7 @@ class RecordingService : LifecycleService() {
         return START_NOT_STICKY
     }
 
-    private fun startRecording(tier: CaptureTier, label: String, channel: String) {
+    private fun startRecording(tier: CaptureTier, label: String, channel: String, isTest: Boolean) {
         if (recorder != null) return
         activeChannel = channel
 
@@ -87,7 +88,7 @@ class RecordingService : LifecycleService() {
         lifecycleScope.launch(Dispatchers.IO) {
             val outcome = r.record(label) { status ->
                 notify(buildNotification(tier, status.health, status.elapsedMs))
-            }
+            }.copy(isTest = isTest)
             RecordingLog.record(outcome)
 
             // Write the human-readable sidecar so the recording appears in the library with
@@ -103,6 +104,7 @@ class RecordingService : LifecycleService() {
                     durationMs = outcome.durationMs,
                     voices = outcome.verdict?.voices ?: com.layerbit.ravam.audio.Voices.INCONCLUSIVE,
                     channel = activeChannel,
+                    isTest = outcome.isTest,
                 )
             }
             recorder = null
@@ -192,16 +194,24 @@ class RecordingService : LifecycleService() {
         const val EXTRA_TIER = "tier"
         const val EXTRA_LABEL = "label"
         const val EXTRA_CHANNEL = "channel"
+        const val EXTRA_IS_TEST = "isTest"
 
         /** App-private, so nothing here is readable by other apps or picked up by media scanners. */
         fun recordingsDir(context: Context): File =
             File(context.filesDir, "recordings").apply { mkdirs() }
 
-        fun start(context: Context, tier: CaptureTier, label: String, channel: String = "Phone") {
+        fun start(
+            context: Context,
+            tier: CaptureTier,
+            label: String,
+            channel: String = "Phone",
+            isTest: Boolean = false,
+        ) {
             val i = Intent(context, RecordingService::class.java)
                 .putExtra(EXTRA_TIER, tier.name)
                 .putExtra(EXTRA_LABEL, label)
                 .putExtra(EXTRA_CHANNEL, channel)
+                .putExtra(EXTRA_IS_TEST, isTest)
             context.startForegroundService(i)
         }
 

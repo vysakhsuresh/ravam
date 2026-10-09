@@ -39,25 +39,35 @@ fun RavamCard(
  * Green appears here and nowhere else, and only when two voices were actually
  * measured. Everything else in the design gives way to that rule — it is the single
  * thing a user has to be able to trust at a glance.
+ *
+ * [Voices.INCONCLUSIVE] used to read "Couldn't tell", which was wrong in the way that
+ * matters: it describes the app failing, when the state only ever means the *recording*
+ * was too short or too quiet to judge — the analyser reaches it on nothing else. People
+ * read it as "this app does not work" and some of them are right to then stop using it.
+ * "Not enough speech" names the real cause, and a cause the user can do something about.
  */
 @Composable
 fun VerdictBadge(voices: Voices, modifier: Modifier = Modifier) {
     val (label, fg, bg) = when (voices) {
         Voices.BOTH_SIDES  -> Triple("Both sides",    RavamColors.Success,   RavamColors.SuccessBg)
         Voices.LOCAL_ONLY  -> Triple("Your side only", RavamColors.Warning,  RavamColors.WarningBg)
-        Voices.INCONCLUSIVE -> Triple("Couldn't tell", RavamColors.TextMuted, Color(0x14FFFFFF))
+        Voices.INCONCLUSIVE -> Triple("Not enough speech", RavamColors.TextMuted, Color(0x14FFFFFF))
     }
-    Text(
-        text = label,
-        color = fg,
-        style = Numeric.copy(fontWeight = FontWeight.Medium),
-        modifier = modifier
-            .clip(RoundedCornerShape(30.dp))
-            .background(bg)
-            .border(1.dp, fg.copy(alpha = 0.35f), RoundedCornerShape(30.dp))
-            .padding(horizontal = 14.dp, vertical = 7.dp),
-    )
+    StatusBadge(label, fg, bg, modifier)
 }
+
+/** The badge shape, for states that are not a two-voice verdict. */
+@Composable
+fun StatusBadge(label: String, fg: Color, bg: Color, modifier: Modifier = Modifier) = Text(
+    text = label,
+    color = fg,
+    style = Numeric.copy(fontWeight = FontWeight.Medium),
+    modifier = modifier
+        .clip(RoundedCornerShape(30.dp))
+        .background(bg)
+        .border(1.dp, fg.copy(alpha = 0.35f), RoundedCornerShape(30.dp))
+        .padding(horizontal = 14.dp, vertical = 7.dp),
+)
 
 /** A labelled measurement. Values use the mono face so columns line up. */
 @Composable

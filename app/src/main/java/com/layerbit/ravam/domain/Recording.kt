@@ -18,6 +18,8 @@ data class Recording(
     val sizeBytes: Long,
     val voices: Voices,
     val channel: String,      // "Phone", "BOTIM", …
+    /** A mic test from the Home screen, not a call. It has no far side to judge. */
+    val isTest: Boolean = false,
     val starred: Boolean = false,
 ) {
     val id: String get() = file.name

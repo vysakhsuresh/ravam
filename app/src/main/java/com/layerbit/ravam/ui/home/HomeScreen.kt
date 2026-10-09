@@ -21,11 +21,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.layerbit.ravam.R
 import com.layerbit.ravam.audio.Voices
+import com.layerbit.ravam.capture.engine.CallRecorder
 import com.layerbit.ravam.consent.ConsentController
 import com.layerbit.ravam.jurisdiction.ConsentRule
 import com.layerbit.ravam.ui.components.ConsentDialog
 import com.layerbit.ravam.ui.components.Measurement
 import com.layerbit.ravam.ui.components.RavamCard
+import com.layerbit.ravam.ui.components.StatusBadge
 import com.layerbit.ravam.ui.components.VerdictBadge
 import com.layerbit.ravam.ui.theme.RavamColors
 
@@ -88,7 +90,8 @@ fun HomeScreen(
             if (!recording) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Records until you stop, so you can try capture without waiting for a call.",
+                    "Checks the microphone without waiting for a call. Speak for a few " +
+                        "seconds, then stop.",
                     style = MaterialTheme.typography.labelSmall, color = RavamColors.TextFaint,
                 )
             }
@@ -98,15 +101,24 @@ fun HomeScreen(
             Spacer(Modifier.height(16.dp))
             RavamCard {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Last recording", style = MaterialTheme.typography.titleMedium, color = RavamColors.TextMain)
-                    VerdictBadge(o.verdict?.voices ?: Voices.INCONCLUSIVE)
+                    Text(
+                        if (o.isTest) "Last test" else "Last recording",
+                        style = MaterialTheme.typography.titleMedium, color = RavamColors.TextMain,
+                    )
+                    // A test has nobody on the other end, so "Both sides" is unreachable by
+                    // construction and every test ended up badged amber or grey — the app
+                    // reporting a failure for doing exactly what was asked. A test is only
+                    // ever a question about the microphone path, so answer that instead.
+                    if (o.isTest) CaptureBadge(o) else VerdictBadge(o.verdict?.voices ?: Voices.INCONCLUSIVE)
                 }
                 Spacer(Modifier.height(8.dp))
                 Measurement("Length", "%d:%02d".format(o.durationMs / 60000, (o.durationMs / 1000) % 60))
-                o.verdict?.let { v ->
-                    Spacer(Modifier.height(4.dp))
-                    Text(v.basis, style = MaterialTheme.typography.bodyMedium, color = RavamColors.TextFaint)
-                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    if (o.isTest) testExplanation(o)
+                    else o.verdict?.basis.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium, color = RavamColors.TextFaint,
+                )
                 o.failure?.let {
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = RavamColors.Warning)
                 }
@@ -180,3 +192,33 @@ private fun BigButton(label: String, color: Color, onClick: () -> Unit) = Text(
     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
         .background(color).clickable(onClick = onClick).padding(vertical = 16.dp),
 )
+
+/**
+ * What a test recording actually proved.
+ *
+ * The test exists to answer one question — "can this phone capture audio at all?" — and
+ * that question has a clean yes/no answer regardless of how briefly the user spoke. The
+ * two-voice verdict answers a different question that a test cannot pose, because there
+ * is no second person on the line.
+ */
+@Composable
+private fun CaptureBadge(o: CallRecorder.Outcome) {
+    val heardSomething = o.failure == null &&
+        o.file != null &&
+        (o.verdict?.voicedFraction ?: 0.0) > 0.0
+    if (heardSomething) {
+        StatusBadge("Mic works", RavamColors.Success, RavamColors.SuccessBg)
+    } else {
+        StatusBadge("No audio", RavamColors.Danger, RavamColors.DangerBg)
+    }
+}
+
+/** The sentence under a test result. Says what was proved and what was not. */
+private fun testExplanation(o: CallRecorder.Outcome): String {
+    if (o.failure != null) return "Nothing was captured."
+    if ((o.verdict?.voicedFraction ?: 0.0) <= 0.0) {
+        return "Recorded, but no speech was heard — check the mic permission and try again."
+    }
+    return "Your voice was captured and saved. A test records only your side, so the " +
+        "both-sides check runs on real calls, not here."
+}

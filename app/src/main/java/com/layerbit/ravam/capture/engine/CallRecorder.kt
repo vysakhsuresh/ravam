@@ -49,6 +49,13 @@ class CallRecorder(
         val verdict: VoiceVerdict?,
         val farSideGapsMs: List<IntRange>,
         val failure: String? = null,
+        /**
+         * True when this came from Home's "Test a recording", not from a call.
+         *
+         * A test has nobody on the other end, so there is no far side to find and the
+         * two-voice verdict is not a result *about* it. The UI must not show one.
+         */
+        val isTest: Boolean = false,
     )
 
     private val cancelled = AtomicBoolean(false)

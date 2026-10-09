@@ -118,9 +118,13 @@ object TwoVoiceAnalyzer {
         val voicedFraction = voiced.size.toDouble() / frames.size
 
         if (voiced.size < MIN_VOICED_FRAMES || voicedFraction < MIN_VOICED_FRACTION) {
+            // Said in seconds, not frames. This line is shown to the person holding the
+            // phone, and "only 11 frames" tells them nothing they can act on, whereas
+            // "0.3 seconds" explains itself and implies the remedy.
+            val seconds = voiced.size * Pcm.FRAME_MS / 1000.0
             return inconclusive(
                 voicedFraction, floor,
-                "Only ${voiced.size} frames of speech — too little to judge",
+                "Only %.1f seconds of speech — not enough to tell the voices apart".format(seconds),
             )
         }
 
