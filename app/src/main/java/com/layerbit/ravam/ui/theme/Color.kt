@@ -37,7 +37,6 @@ object RavamColors {
     val DangerBg      = Color(0x1AEF4444)
 
     // Layerbit brand furniture — values shared with LayerLink's core module
-    val AccentDim     = Color(0xFF1E3A52)   // footer divider
     // "Buy me a coffee", against Get Help's blue. #FFC107 is the family's coffee amber —
     // the retired CoffeeEdge pill border was this exact hue at 30% alpha. Deliberately not
     // [Warning], which is the same sort of yellow but means something is wrong; a footer

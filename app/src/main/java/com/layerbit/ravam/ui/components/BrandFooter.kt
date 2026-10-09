@@ -51,7 +51,12 @@ fun BrandFooter(
 
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
 
-        Spacer(Modifier.fillMaxWidth().height(1.dp).background(RavamColors.AccentDim))
+        // No rule above the footer. Both callers already leave 36dp before this composable
+        // and it adds 20 of its own, so 56dp of air was separating the footer from the
+        // content before the line was asked to do it as well. Blue is also the app's
+        // interactive colour — the live tab, the toggles, Get Help — so a full-bleed blue
+        // rule promised structure it did not have, and it was the only horizontal rule
+        // anywhere in the app; everything else separates with card borders and space.
         Spacer(Modifier.height(20.dp))
 
         Row(
