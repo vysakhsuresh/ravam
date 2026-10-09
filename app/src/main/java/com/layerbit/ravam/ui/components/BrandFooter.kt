@@ -28,9 +28,17 @@ import com.layerbit.ravam.ui.theme.RavamColors
 /**
  * The Layerbit footer, as every app in the family carries it.
  *
- * "Powered by Layerbit AI" above two pills — Get Help and Buy me a coffee. Get Help opens
- * a dialog offering email or WhatsApp; it does **not** throw the user out to a web page.
- * An app that bounces someone into a browser the moment they need help has lost them.
+ * "Powered by Layerbit AI", and under it one quiet line: Get Help · Buy me a coffee.
+ *
+ * Plain text rather than buttons, because neither is an action the user came here to take.
+ * Two bordered pills read as the screen's primary controls and pull the eye away from the
+ * content above them; set as a single line of coloured text they stay findable and stop
+ * competing. Get Help takes the app's blue, Buy me a coffee a beige, so the pair is still
+ * legible as two separate things without any chrome.
+ *
+ * Get Help opens a dialog offering email or WhatsApp; it does **not** throw the user out
+ * to a web page. An app that bounces someone into a browser the moment they need help has
+ * lost them.
  *
  * Lives on one screen only. Never over a live call.
  */
@@ -59,25 +67,22 @@ fun BrandFooter(
             )
         }
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            BrandPill(
-                icon = R.drawable.ic_help,
-                label = "Get Help",
-                borderColor = RavamColors.AccentPill,
-                onClick = { showHelp = true },
+            FooterLink("Get Help", RavamColors.Accent) { showHelp = true }
+            Text(
+                "·",
+                color = RavamColors.TextFaint,
+                style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.padding(horizontal = 10.dp),
             )
-            Spacer(Modifier.width(10.dp))
-            BrandPill(
-                icon = R.drawable.ic_coffee,
-                label = "Buy me a coffee",
-                borderColor = RavamColors.CoffeeEdge,
-                onClick = { onOpenUrl(BrandLinks.COFFEE_URL) },
-            )
+            FooterLink("Buy me a coffee", RavamColors.CoffeeText) {
+                onOpenUrl(BrandLinks.COFFEE_URL)
+            }
         }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(22.dp))
         Text(
             "Nothing you record leaves this phone.",
             color = RavamColors.TextFaint,
@@ -89,25 +94,22 @@ fun BrandFooter(
     if (showHelp) GetHelpDialog(onOpenUrl = onOpenUrl, onDismiss = { showHelp = false })
 }
 
+/**
+ * One word of the footer line.
+ *
+ * The padding is not decoration: as bare text these would be well under the 48dp minimum
+ * touch target, so each keeps vertical room to be hit without the line looking spaced out.
+ */
 @Composable
-private fun BrandPill(
-    icon: Int,
-    label: String,
-    borderColor: Color,
-    onClick: () -> Unit,
-) = Row(
-    verticalAlignment = Alignment.CenterVertically,
+private fun FooterLink(label: String, color: Color, onClick: () -> Unit) = Text(
+    text = label,
+    color = color,
+    style = MaterialTheme.typography.labelLarge,
     modifier = Modifier
-        .clip(RoundedCornerShape(20.dp))
-        .background(RavamColors.PillBg)
-        .border(1.dp, borderColor, RoundedCornerShape(20.dp))
+        .clip(RoundedCornerShape(8.dp))
         .clickable(onClick = onClick)
-        .padding(horizontal = 14.dp, vertical = 10.dp),
-) {
-    Image(painterResource(icon), null, Modifier.size(16.dp))
-    Spacer(Modifier.width(6.dp))
-    Text(label, color = RavamColors.TextMain, style = MaterialTheme.typography.labelLarge)
-}
+        .padding(horizontal = 6.dp, vertical = 12.dp),
+)
 
 /**
  * Email or WhatsApp, in the app's own skin.
