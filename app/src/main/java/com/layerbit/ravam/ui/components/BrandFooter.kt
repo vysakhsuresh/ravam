@@ -56,7 +56,9 @@ fun BrandFooter(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.clickable { onOpenUrl(BrandLinks.WEBSITE_URL) }.padding(6.dp),
+            modifier = Modifier
+                .clickable { onOpenUrl(BrandLinks.WEBSITE_URL) }
+                .padding(horizontal = 6.dp, vertical = 2.dp),
         ) {
             Image(painterResource(R.drawable.ic_layerbit_mark), null, Modifier.size(22.dp))
             Spacer(Modifier.width(8.dp))
@@ -67,8 +69,9 @@ fun BrandFooter(
             )
         }
 
-        Spacer(Modifier.height(10.dp))
-
+        // No spacer. The links carry their own vertical padding for the touch target, and
+        // that padding is already the whole gap — adding a spacer on top of it pushed the
+        // line far enough from the mark to stop reading as one block.
         Row(verticalAlignment = Alignment.CenterVertically) {
             FooterLink("Get Help", RavamColors.Accent) { showHelp = true }
             Text(
@@ -95,10 +98,14 @@ fun BrandFooter(
 }
 
 /**
- * One word of the footer line.
+ * One half of the footer line.
  *
- * The padding is not decoration: as bare text these would be well under the 48dp minimum
- * touch target, so each keeps vertical room to be hit without the line looking spaced out.
+ * The vertical padding is the tap target, not decoration — the label alone is about 20dp
+ * tall. It is also the entire gap to "Powered by Layerbit AI" above, which is why there
+ * is no spacer between them: every dp here is spent twice, and 12 made the two lines look
+ * unrelated. 8 keeps them reading as one block while leaving a ~36dp target, which is
+ * short of the 48dp ideal but is the right side of the trade for two tertiary links that
+ * sit alone at the bottom of a scroll with nothing adjacent to mis-hit.
  */
 @Composable
 private fun FooterLink(label: String, color: Color, onClick: () -> Unit) = Text(
@@ -108,7 +115,7 @@ private fun FooterLink(label: String, color: Color, onClick: () -> Unit) = Text(
     modifier = Modifier
         .clip(RoundedCornerShape(8.dp))
         .clickable(onClick = onClick)
-        .padding(horizontal = 6.dp, vertical = 12.dp),
+        .padding(horizontal = 8.dp, vertical = 8.dp),
 )
 
 /**
