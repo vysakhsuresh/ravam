@@ -14,8 +14,14 @@ in by hand with exactly these names:
 | `space_grotesk_bold.ttf`     | Space Grotesk | 700 |
 | `fira_code_regular.ttf`      | Fira Code     | 400 |
 
-Sources — Space Grotesk: https://github.com/floriankarsten/space-grotesk ·
+The script resolves each face through the Google Fonts CSS API rather than from a
+hardcoded upstream path. Both upstream repos have since moved their files, and
+space-grotesk no longer publishes a static SemiBold at all — only a variable font —
+so the weight the theme asks for has to be instanced. Sources remain
+Space Grotesk: https://github.com/floriankarsten/space-grotesk ·
 Fira Code: https://github.com/tonsky/FiraCode · both SIL Open Font License 1.1.
 
 Android resource names allow only lowercase letters, digits and underscores, so the
-filenames above are not negotiable.
+filenames above are not negotiable. Nothing but `.ttf`, `.ttc`, `.otf` or `.xml` may
+sit in `res/font/` — the resource merger fails the build on any other file, which is
+why this note lives in `docs/` rather than next to the fonts.

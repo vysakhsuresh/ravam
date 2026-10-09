@@ -21,3 +21,6 @@ Thumbs.db
 *.pcm
 *.m4a
 *.ogg
+
+# Fonts are fetched, not committed — see docs/fonts.md
+/app/src/main/res/font/*.ttf
