@@ -81,7 +81,8 @@ class RecordingService : LifecycleService() {
         )
 
         val dir = recordingsDir(this)
-        val r = CallRecorder(this, tier, dir)
+        val gain = com.layerbit.ravam.data.SettingsStore(this).gainFactor
+        val r = CallRecorder(this, tier, dir, gainFactor = gain)
         recorder = r
         startedAt = System.currentTimeMillis()
 
@@ -89,10 +90,10 @@ class RecordingService : LifecycleService() {
             val outcome = r.record(label) { status ->
                 notify(buildNotification(tier, status.health, status.elapsedMs))
             }.copy(isTest = isTest)
-            RecordingLog.record(outcome)
 
-            // Write the human-readable sidecar so the recording appears in the library with
-            // its verdict and channel. No legal flags are stored — only what a user wants to
+            // Write the human-readable sidecar FIRST, then announce completion — so a library
+            // that refreshes the instant RecordingLog emits already sees the verdict and
+            // channel, not a bare file. No legal flags are stored, only what a user wants to
             // see: a name, the time, how long, and whether both sides were heard (PLAN.md §6).
             outcome.file?.let { file ->
                 val name = java.text.SimpleDateFormat("d MMM yyyy, h:mm a", java.util.Locale.getDefault())
@@ -107,6 +108,7 @@ class RecordingService : LifecycleService() {
                     isTest = outcome.isTest,
                 )
             }
+            RecordingLog.record(outcome)
             recorder = null
             ServiceCompat.stopForeground(this@RecordingService, ServiceCompat.STOP_FOREGROUND_REMOVE)
             stopSelf()

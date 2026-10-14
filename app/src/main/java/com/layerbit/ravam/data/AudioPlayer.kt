@@ -1,71 +1,100 @@
 package com.layerbit.ravam.data
 
 import android.media.MediaPlayer
+import android.media.audiofx.LoudnessEnhancer
 import java.io.File
 import java.io.FileInputStream
 
 /**
- * A thin MediaPlayer wrapper for recording playback.
+ * Playback for one recording at a time, with the controls a music player has: seek to any
+ * point, skip forward and back, and an extra loudness boost on top of whatever gain was baked
+ * in at capture — because call audio can still be quiet and the user asked to hear it clearly.
  *
- * One player at a time, released on stop. WAV plays natively on every Android version, so
- * no codec concerns in v1 — a point in favour of the simple storage format while the app
- * finds its feet.
+ * The player holds no UI state of its own beyond the MediaPlayer; the ViewModel polls
+ * [positionMs] on a timer and drives the scrubber. Keeping it dumb means seek, skip and resume
+ * are all one-liners the UI can call freely.
  */
 class AudioPlayer {
 
     private var player: MediaPlayer? = null
+    private var enhancer: LoudnessEnhancer? = null
     private var playingId: String? = null
 
     val currentId: String? get() = playingId
     val isPlaying: Boolean get() = runCatching { player?.isPlaying == true }.getOrDefault(false)
 
-    /** Starts, pauses or resumes [recording]. Returns false if it could not be played. */
-    fun toggle(recording: File, id: String, onComplete: () -> Unit): Boolean {
-        if (playingId == id && isPlaying) { pause(); return true }
-        if (playingId == id && player != null) { player?.start(); return true }
-
+    /**
+     * Start a recording from the beginning, or from [startMs]. Replaces anything playing.
+     * Returns false if the file could not be opened.
+     *
+     * The file is opened HERE, in our own process, and MediaPlayer is handed the descriptor —
+     * not the path. setDataSource(String) only passes the path over Binder and lets the media
+     * server do the opening, as the media uid, which has no access to /data/user/0/<pkg>/files
+     * and is refused by the kernel ("Prepare failed: status=0x1", the real cause visible only in
+     * logcat). Recordings are deliberately app-private, so this is not a corner case — it is
+     * every recording the app makes. An already-open descriptor carries our access rights with it.
+     */
+    fun play(file: File, id: String, startMs: Int = 0, onComplete: () -> Unit): Boolean {
         stop()
         return runCatching {
-            // Open the file here, in our own process, and hand MediaPlayer the descriptor.
-            //
-            // setDataSource(String) looks like it would do, but it only passes the *path*
-            // over Binder and the media server does the opening — as the media uid, which
-            // has no business inside /data/user/0/<pkg>/files and is refused by the kernel.
-            // That surfaces as a bare "Prepare failed.: status=0x1" with the real cause
-            // (FileSource: Permission denied) visible only in logcat, from a process that
-            // is not ours. Recordings are deliberately app-private, so this is not a corner
-            // case: it is every recording the app has ever made.
-            //
-            // An already-open descriptor carries our access rights with it, so the media
-            // server never needs any of its own.
-            FileInputStream(recording).use { input ->
+            FileInputStream(file).use { input ->
                 player = MediaPlayer().apply {
                     setDataSource(input.fd)
-                    setOnCompletionListener { this@AudioPlayer.stop(); onComplete() }
-                    prepare()   // safe to close the stream after this; prepare() has read what it needs
+                    setOnCompletionListener { onComplete() }
+                    prepare() // safe to close the stream after this; prepare() has read what it needs
+                    // An extra ~+8 dB on playback. LoudnessEnhancer does its own limiting, so this
+                    // lifts quiet recordings without the harsh clipping a raw volume multiply adds.
+                    runCatching {
+                        enhancer = LoudnessEnhancer(audioSessionId).apply {
+                            setTargetGain(PLAYBACK_BOOST_MB)
+                            enabled = true
+                        }
+                    }
+                    if (startMs > 0) seekTo(startMs)
                     start()
                 }
             }
             playingId = id
             true
         }.getOrElse {
-            // A truncated or half-written WAV must not take the app down with it. Recordings
-            // are flushed per buffer precisely so a killed process leaves a readable file, but
-            // the one orphan that loses the race still has to fail quietly.
+            // A truncated or half-written WAV must not take the app down with it.
             stop()
             false
         }
     }
 
     fun pause() = runCatching { player?.pause() }.let {}
+    fun resume() = runCatching { player?.start() }.let {}
+
+    fun togglePlayPause(): Boolean {
+        if (isPlaying) { pause(); return false }
+        resume(); return isPlaying
+    }
+
+    /** Jump to an absolute position, clamped to the recording. */
+    fun seekTo(ms: Int) = runCatching {
+        player?.let { it.seekTo(ms.coerceIn(0, it.duration)) }
+    }.let {}
+
+    /** Skip by a delta — negative to rewind. */
+    fun skip(deltaMs: Int) = runCatching {
+        player?.let { it.seekTo((it.currentPosition + deltaMs).coerceIn(0, it.duration)) }
+    }.let {}
+
+    fun positionMs(): Int = runCatching { player?.currentPosition ?: 0 }.getOrDefault(0)
+    fun durationMs(): Int = runCatching { player?.duration ?: 0 }.getOrDefault(0)
 
     fun stop() {
+        runCatching { enhancer?.release() }
+        enhancer = null
         runCatching { player?.stop() }
         runCatching { player?.release() }
         player = null
         playingId = null
     }
 
-    fun positionMs(): Int = runCatching { player?.currentPosition ?: 0 }.getOrDefault(0)
-    fun durationMs(): Int = runCatching { player?.duration ?: 0 }.getOrDefault(0)
+    private companion object {
+        /** Extra playback gain in millibels. 800 mB ≈ +8 dB. */
+        const val PLAYBACK_BOOST_MB = 800
+    }
 }

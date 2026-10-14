@@ -6,6 +6,7 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import com.layerbit.ravam.audio.Gain
 import com.layerbit.ravam.audio.LiveIntegrityMonitor
 import com.layerbit.ravam.audio.PcmSink
 import com.layerbit.ravam.audio.TwoVoiceAnalyzer
@@ -32,6 +33,8 @@ class CallRecorder(
     private val tier: CaptureTier,
     private val outputDir: File,
     private val sampleRateHz: Int = 16_000,
+    /** How much louder to make the saved audio. 1.0 = untouched. See [Gain]. */
+    private val gainFactor: Float = 1.0f,
 ) {
 
     /** What the recorder is telling the rest of the app, moment to moment. */
@@ -112,14 +115,19 @@ class CallRecorder(
                 if (n <= 0) break
 
                 val slice = if (n == chunk.size) chunk else chunk.copyOf(n)
-                sink.write(slice, n)
-                monitor.offer(slice)
 
+                // The monitor and the verdict run on the ORIGINAL signal, so amplifying can
+                // never change whether Ravam believes both sides were present. Only the audio
+                // written to disk is made louder.
+                monitor.offer(slice)
                 if (analysisLen < keepSamples) {
                     val room = minOf(n, keepSamples - analysisLen)
                     slice.copyInto(analysisBuf, analysisLen, 0, room)
                     analysisLen += room
                 }
+
+                val toWrite = if (gainFactor == 1.0f) slice else Gain.amplify(slice, gainFactor)
+                sink.write(toWrite, toWrite.size)
 
                 // Don't spam the caller; once a second is plenty for a notification.
                 if (monitor.elapsedMs - lastReported >= 1_000) {

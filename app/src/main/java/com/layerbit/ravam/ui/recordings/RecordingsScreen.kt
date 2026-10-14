@@ -9,6 +9,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.ui.res.painterResource
 import com.layerbit.ravam.R
@@ -86,10 +88,12 @@ fun RecordingsScreen(vm: RecordingsViewModel = viewModel()) {
                 items(list, key = { it.id }) { rec ->
                     RecordingRow(
                         rec = rec,
-                        playing = state.playingId == rec.id,
+                        playback = state.playback.takeIf { it.id == rec.id },
                         onPlay = { vm.togglePlay(rec) },
                         onStar = { vm.toggleStar(rec) },
                         onDelete = { vm.delete(rec) },
+                        onSeek = { vm.seekTo(it) },
+                        onSkip = { vm.skip(it) },
                     )
                 }
                 item { Spacer(Modifier.height(40.dp)) }
@@ -101,11 +105,16 @@ fun RecordingsScreen(vm: RecordingsViewModel = viewModel()) {
 @Composable
 private fun RecordingRow(
     rec: Recording,
-    playing: Boolean,
+    playback: Playback?,
     onPlay: () -> Unit,
     onStar: () -> Unit,
     onDelete: () -> Unit,
+    onSeek: (Int) -> Unit,
+    onSkip: (Int) -> Unit,
 ) = RavamCard {
+    val selected = playback != null
+    val playing = playback?.isPlaying == true
+
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
             painter = painterResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play),
@@ -130,6 +139,51 @@ private fun RecordingRow(
             modifier = Modifier.size(28.dp).clickable(onClick = onStar).padding(4.dp),
         )
     }
+
+    // The player: appears for the selected recording, with a scrubber you can drag to any
+    // point and 10-second skip either way — the thing a music player has and the last build
+    // was missing.
+    if (selected) {
+        val total = (playback!!.durationMs.takeIf { it > 0 } ?: rec.durationMs).coerceAtLeast(1)
+        val pos = playback.positionMs.coerceIn(0, total)
+        Spacer(Modifier.height(8.dp))
+        Slider(
+            value = pos.toFloat(),
+            onValueChange = { onSeek(it.toInt()) },
+            valueRange = 0f..total.toFloat(),
+            colors = SliderDefaults.colors(
+                thumbColor = RavamColors.Accent,
+                activeTrackColor = RavamColors.Accent,
+                inactiveTrackColor = RavamColors.CardBorder,
+            ),
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(mmss(pos), color = RavamColors.TextMuted, style = Numeric)
+            Text(mmss(total), color = RavamColors.TextMuted, style = Numeric)
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(28.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                painterResource(R.drawable.ic_rewind), "Back 10 seconds", tint = RavamColors.TextMain,
+                modifier = Modifier.size(30.dp).clickable { onSkip(-10_000) }.padding(2.dp),
+            )
+            Icon(
+                painterResource(if (playing) R.drawable.ic_pause else R.drawable.ic_play),
+                if (playing) "Pause" else "Play", tint = RavamColors.Accent,
+                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(28.dp))
+                    .clickable(onClick = onPlay).padding(4.dp),
+            )
+            Icon(
+                painterResource(R.drawable.ic_forward), "Forward 10 seconds", tint = RavamColors.TextMain,
+                modifier = Modifier.size(30.dp).clickable { onSkip(10_000) }.padding(2.dp),
+            )
+        }
+    }
+
     Spacer(Modifier.height(10.dp))
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         // A mic test has no far side, so a both-sides verdict would be a result about a

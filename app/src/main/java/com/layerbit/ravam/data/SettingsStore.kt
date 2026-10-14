@@ -61,6 +61,11 @@ class SettingsStore(context: Context) {
         get() = prefs.getInt(RETENTION, 0)
         set(v) = prefs.edit { putInt(RETENTION, v) }
 
+    /** How much louder to make recordings. Defaults to Loud, since call audio captures quiet. */
+    var gainFactor: Float
+        get() = prefs.getFloat(GAIN, 2.5f)
+        set(v) = prefs.edit { putFloat(GAIN, v) }
+
     private companion object {
         const val TERMS = "terms_accepted"
         const val AUTO = "auto_record"
@@ -69,5 +74,6 @@ class SettingsStore(context: Context) {
         const val VOIP = "record_voip"
         const val EXCLUDED = "excluded_numbers"
         const val RETENTION = "retention_days"
+        const val GAIN = "gain_factor"
     }
 }

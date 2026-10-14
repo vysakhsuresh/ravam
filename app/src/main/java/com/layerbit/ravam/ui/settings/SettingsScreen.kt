@@ -59,6 +59,36 @@ fun SettingsScreen(onOpenUrl: (String) -> Unit) {
 
             Spacer(Modifier.height(16.dp))
             RavamCard {
+                Text("Loudness", style = MaterialTheme.typography.titleMedium, color = RavamColors.TextMain)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "How much to amplify recordings. Call audio captures quiet, so Loud is the " +
+                        "default; recordings also get an extra boost on playback.",
+                    style = MaterialTheme.typography.bodyMedium, color = RavamColors.TextMuted,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        com.layerbit.ravam.audio.Gain.NORMAL to "Normal",
+                        com.layerbit.ravam.audio.Gain.LOUD to "Loud",
+                        com.layerbit.ravam.audio.Gain.LOUDEST to "Loudest",
+                    ).forEach { (factor, label) ->
+                        val selected = settings.gainFactor == factor
+                        Text(
+                            label,
+                            color = if (selected) RavamColors.BgBase else RavamColors.TextMuted,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.clip(RoundedCornerShape(20.dp))
+                                .background(if (selected) RavamColors.Accent else RavamColors.CardBg)
+                                .clickable { settings.gainFactor = factor; changed() }
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            RavamCard {
                 Text("Storage", style = MaterialTheme.typography.titleMedium, color = RavamColors.TextMain)
                 Spacer(Modifier.height(6.dp))
                 Text(
