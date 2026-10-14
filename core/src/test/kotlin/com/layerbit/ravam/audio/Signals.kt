@@ -62,6 +62,19 @@ object Signals {
     /** Pure digital zero. */
     fun silence(ms: Int) = ShortArray(ms * RATE / 1000)
 
+    /**
+     * What a silenced capture actually looks like on a real phone: zeros, with a sample
+     * of ±1 every so often — about −90 dBFS in the frames that have one, −120 elsewhere.
+     */
+    fun oneBitWobble(ms: Int, seed: Int = 11): ShortArray {
+        val rng = Random(seed)
+        return ShortArray(ms * RATE / 1000) { if (rng.nextInt(400) == 0) 1 else 0 }
+    }
+
+    /** A Bluetooth-headset call as captured: silenced throughout, one loud burst at the end. */
+    fun silencedThenBurst(silentMs: Int = 19_000, burstMs: Int = 700, burstDbfs: Double = -22.0): ShortArray =
+        oneBitWobble(silentMs) + conversation(listOf(burstDbfs), turnMs = burstMs, gapMs = 0)
+
     /** Room tone only, no speech. */
     fun noiseOnly(ms: Int, dbfs: Double = -62.0, seed: Int = 3): ShortArray {
         val rng = Random(seed)

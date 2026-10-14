@@ -2,11 +2,13 @@ package com.layerbit.ravam.capture.engine
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.NoiseSuppressor
+import android.os.Build
 import com.layerbit.ravam.audio.LiveIntegrityMonitor
 import com.layerbit.ravam.audio.PcmSink
 import com.layerbit.ravam.audio.TwoVoiceAnalyzer
@@ -52,11 +54,24 @@ class CallRecorder(
         val touchesAudio: Boolean get() = boostFarSide || noiseCancel
     }
 
+    /**
+     * Where the call's audio is.
+     *
+     * This matters more than any tier. On a Bluetooth headset both voices travel the
+     * headset's own link to the modem, and the phone's microphone hears neither: the
+     * capture opens, the file grows, and every sample is zero — until the headset link
+     * drops at hang-up and the handset mic catches the last word. Seen exactly so on a
+     * moto g84 (Android 15). The user has to be told *during* the call, because the fix
+     * is theirs to make: move the call to the phone or the speaker.
+     */
+    enum class Route { PHONE, BLUETOOTH, WIRED, UNKNOWN }
+
     /** What the recorder is telling the rest of the app, moment to moment. */
     data class Status(
         val elapsedMs: Int,
         val health: LiveIntegrityMonitor.Health,
         val bytesWritten: Long,
+        val route: Route = Route.UNKNOWN,
     )
 
     /** What the recording turned out to be, once it ended. */
@@ -76,6 +91,8 @@ class CallRecorder(
         val isTest: Boolean = false,
         /** True when the far side was boosted on the way to disk, so playback knows not to add more. */
         val levelled: Boolean = false,
+        /** True when the call's audio was on a Bluetooth headset at any point while recording. */
+        val viaBluetooth: Boolean = false,
     )
 
     private val cancelled = AtomicBoolean(false)
@@ -120,6 +137,10 @@ class CallRecorder(
         val analysisBuf = ShortArray(keepSamples)
         var analysisLen = 0
 
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        var route = Route.UNKNOWN
+        var sawBluetooth = false
+
         var record: AudioRecord? = null
         var suppressor: NoiseSuppressor? = null
         try {
@@ -149,6 +170,10 @@ class CallRecorder(
             val chunk = ShortArray(minBuffer)
             var lastReported = 0
 
+            // Checked once a second with the status, not per buffer: it is a Binder call.
+            route = routeOf(record, audioManager)
+            if (route == Route.BLUETOOTH) sawBluetooth = true
+
             while (!cancelled.get()) {
                 val n = record.read(chunk, 0, chunk.size)
                 if (n <= 0) break
@@ -174,7 +199,9 @@ class CallRecorder(
                 // Don't spam the caller; once a second is plenty for a notification.
                 if (monitor.elapsedMs - lastReported >= 1_000) {
                     lastReported = monitor.elapsedMs
-                    onStatus(Status(monitor.elapsedMs, monitor.health, sink.bytesWritten))
+                    route = routeOf(record, audioManager)
+                    if (route == Route.BLUETOOTH) sawBluetooth = true
+                    onStatus(Status(monitor.elapsedMs, monitor.health, sink.bytesWritten, route))
                 }
             }
         } catch (e: SecurityException) {
@@ -203,7 +230,48 @@ class CallRecorder(
             verdict = verdict,
             farSideGapsMs = monitor.gaps(),
             levelled = leveler != null && processing.boostFarSide,
+            viaBluetooth = sawBluetooth,
         )
+    }
+
+    /**
+     * Where the call's audio is right now.
+     *
+     * Two questions, because they can have different answers. Where is *our capture*
+     * being fed from — the device the policy routed the AudioRecord to? And where is
+     * *the call* — the device Telecom has made the communication device? A Bluetooth
+     * answer to either means the microphone is not hearing the conversation.
+     */
+    private fun routeOf(record: AudioRecord, am: AudioManager): Route {
+        val captured = runCatching { record.routedDevice }.getOrNull()
+        if (captured != null && captured.type.isBluetooth()) return Route.BLUETOOTH
+
+        val call = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching { am.communicationDevice }.getOrNull()
+        } else {
+            null
+        }
+        if (call != null && call.type.isBluetooth()) return Route.BLUETOOTH
+
+        @Suppress("DEPRECATION")
+        if (runCatching { am.isBluetoothScoOn }.getOrDefault(false)) return Route.BLUETOOTH
+
+        return when (captured?.type) {
+            null -> Route.UNKNOWN
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_USB_DEVICE -> Route.WIRED
+            else -> Route.PHONE
+        }
+    }
+
+    private fun Int.isBluetooth(): Boolean = when (this) {
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+        AudioDeviceInfo.TYPE_BLE_HEADSET,
+        AudioDeviceInfo.TYPE_BLE_SPEAKER,
+        AudioDeviceInfo.TYPE_BLE_BROADCAST -> true
+        else -> false
     }
 
     /**

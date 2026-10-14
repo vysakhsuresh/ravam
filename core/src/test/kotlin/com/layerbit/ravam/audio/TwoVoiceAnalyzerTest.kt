@@ -38,11 +38,23 @@ class TwoVoiceAnalyzerTest {
     }
 
     @Test
-    fun `digital silence is inconclusive, never local-only`() {
+    fun `digital silence is nothing captured, never local-only`() {
         // A silenced stream is a different problem from a one-sided one and the user
         // needs a different instruction, so the verdicts must not collapse together.
         val v = TwoVoiceAnalyzer.analyzeMono(Signals.silence(5_000), Signals.RATE)
-        assertEquals(Voices.INCONCLUSIVE, v.voices)
+        assertEquals(Voices.NOTHING, v.voices)
+    }
+
+    @Test
+    fun `a silenced call with one burst at the end is nothing captured, never both sides`() {
+        // Reproduces a real file from a moto g84 on a Bluetooth-headset call: 19 seconds
+        // of digital zero with the odd one-bit wobble, then 0.7 s of the user's voice
+        // once the headset link dropped at hang-up. The first build measured the floor
+        // at −120, counted the wobble as "speech", clustered it against the burst and
+        // badged the file "Both sides". That badge is the one thing this app must never
+        // get wrong.
+        val v = TwoVoiceAnalyzer.analyzeMono(Signals.silencedThenBurst(), Signals.RATE)
+        assertEquals(v.basis, Voices.NOTHING, v.voices)
     }
 
     @Test

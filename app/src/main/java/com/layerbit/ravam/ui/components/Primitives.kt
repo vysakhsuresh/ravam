@@ -52,6 +52,10 @@ fun VerdictBadge(voices: Voices, modifier: Modifier = Modifier) {
         Voices.BOTH_SIDES  -> Triple("Both sides",    RavamColors.Success,   RavamColors.SuccessBg)
         Voices.LOCAL_ONLY  -> Triple("Your side only", RavamColors.Warning,  RavamColors.WarningBg)
         Voices.INCONCLUSIVE -> Triple("Not enough speech", RavamColors.TextMuted, Color(0x14FFFFFF))
+        // Not grey: the user did nothing wrong and no amount of speaking would have helped.
+        // The phone did not feed the capture. Amber, like "Your side only" — a real problem
+        // with a real remedy, which the row underneath spells out.
+        Voices.NOTHING     -> Triple("Nothing captured", RavamColors.Warning, RavamColors.WarningBg)
     }
     StatusBadge(label, fg, bg, modifier)
 }

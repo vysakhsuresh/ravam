@@ -210,6 +210,19 @@ private fun RecordingRow(
             )
         }
     }
+    // "Nothing captured" needs its cause next to it, because the cause is the remedy.
+    if (!rec.isTest && rec.voices == com.layerbit.ravam.audio.Voices.NOTHING) {
+        Spacer(Modifier.height(6.dp))
+        Text(
+            if (rec.viaBluetooth) {
+                "The call was on a Bluetooth headset, and this phone doesn't let Ravam hear " +
+                    "calls there. Take the next one on the phone or on speaker."
+            } else {
+                "This phone didn't let Ravam hear the call."
+            },
+            style = MaterialTheme.typography.bodyMedium, color = RavamColors.TextFaint,
+        )
+    }
 }
 
 /**

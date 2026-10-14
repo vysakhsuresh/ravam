@@ -94,7 +94,7 @@ class RecordingService : LifecycleService() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             val outcome = r.record(label) { status ->
-                notify(buildNotification(tier, status.health, status.elapsedMs))
+                notify(buildNotification(tier, status.health, status.elapsedMs, status.route))
             }.copy(isTest = isTest)
 
             // Write the human-readable sidecar FIRST, then announce completion — so a library
@@ -113,6 +113,7 @@ class RecordingService : LifecycleService() {
                     channel = activeChannel,
                     isTest = outcome.isTest,
                     levelled = outcome.levelled,
+                    viaBluetooth = outcome.viaBluetooth,
                 )
             }
             RecordingLog.record(outcome)
@@ -139,6 +140,7 @@ class RecordingService : LifecycleService() {
         tier: CaptureTier,
         health: LiveIntegrityMonitor.Health,
         elapsedMs: Int,
+        route: CallRecorder.Route = CallRecorder.Route.UNKNOWN,
     ): Notification {
         val stop = PendingIntent.getService(
             this, 1,
@@ -150,7 +152,14 @@ class RecordingService : LifecycleService() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
-        val (title, text) = when (health) {
+        val (title, text) = when {
+            // Said before the stream is even judged dead: on a Bluetooth headset the phone's
+            // microphone hears neither voice, and the only fix is the user's to make. If
+            // this handset does feed the headset's audio through, HEALTHY wins below.
+            route == CallRecorder.Route.BLUETOOTH && health != LiveIntegrityMonitor.Health.HEALTHY ->
+                "Call is on your Bluetooth headset" to
+                    "Ravam can't hear it there. Switch the call to the phone or speaker"
+            else -> when (health) {
             LiveIntegrityMonitor.Health.WARMING_UP ->
                 "Starting…" to "Listening via ${tier.displayName}"
             LiveIntegrityMonitor.Health.HEALTHY ->
@@ -159,6 +168,7 @@ class RecordingService : LifecycleService() {
                 "Only your voice is recording" to "Turn on speakerphone to capture them too"
             LiveIntegrityMonitor.Health.DEAD_STREAM ->
                 "Recording has gone silent" to "This phone has blocked Ravam from hearing the call"
+            }
         }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)

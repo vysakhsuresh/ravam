@@ -15,8 +15,15 @@ enum class Voices {
     /** Speech present, but all of it at one level — consistent with the local mic only. */
     LOCAL_ONLY,
 
-    /** Not enough voiced audio to decide. Too short, too quiet, or all silence. */
+    /** Not enough voiced audio to decide. Too short, or too quiet. */
     INCONCLUSIVE,
+
+    /**
+     * The capture delivered digital silence for nearly the whole recording. Not a quiet
+     * call: a stream the phone never fed — the audio policy silenced it, or the call's
+     * audio was somewhere the microphone could not reach (a Bluetooth headset).
+     */
+    NOTHING,
 }
 
 /**

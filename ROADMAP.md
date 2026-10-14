@@ -5,7 +5,7 @@ Where the app is, and what each phase delivers. A phase is **done** only when it
 
 ## Where we are now
 
-Built and **testable without a handset** (52 passing tests in `:core`):
+Built and **testable without a handset** (54 passing tests in `:core`):
 - `TwoVoiceAnalyzer` — both-sides verdict from mono or stereo audio.
 - `LiveIntegrityMonitor` — catches the far side dropping out mid-call.
 - `VoiceLeveler` — lifts the faint far side to the local voice's level on the way to
@@ -24,6 +24,14 @@ Built, **not yet device-proven** (`:app` — compiles in Android Studio, not her
   recorded before the boost existed).
 - Consent + jurisdiction layer with the warn-and-decide dialog.
 - Layerbit brand footer with the in-app Get Help dialog.
+
+**Learned on hardware** (moto g84 5G, Android 15):
+- A call routed to a Bluetooth (HFP) headset delivers digital zero to the accessibility
+  tier for its whole length; the handset mic only opens when the headset link drops at
+  hang-up. Both voices live on the headset's SCO link, which this tier cannot reach.
+  Ravam now says so in the notification while the call is live, and badges the file
+  "Nothing captured" with the cause, instead of "Both sides" — which is what the first
+  analyser said about 20 seconds of zeros.
 
 ## The honesty rule
 

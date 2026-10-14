@@ -56,6 +56,9 @@ object TwoVoiceAnalyzer {
     /** Fewer voiced frames than this and the clustering is noise. ~2.5 s at 25 ms. */
     const val MIN_VOICED_FRAMES = 100
 
+    /** Share of dead frames at which a recording is "nothing captured" rather than quiet. */
+    const val DEAD_FRACTION = 0.80
+
     /**
      * The easy case: uplink and downlink on separate channels.
      *
@@ -69,8 +72,12 @@ object TwoVoiceAnalyzer {
             return inconclusive(0.0, Pcm.SILENCE_DBFS, "No audio captured")
         }
 
-        val nearFloor = Pcm.percentile(nearFrames, 0.10)
-        val farFloor = Pcm.percentile(farFrames, 0.10)
+        if (Pcm.deadFraction(nearFrames) >= DEAD_FRACTION && Pcm.deadFraction(farFrames) >= DEAD_FRACTION) {
+            return nothing(nearFrames)
+        }
+
+        val nearFloor = maxOf(Pcm.percentile(nearFrames, 0.10), Pcm.MIN_NOISE_FLOOR_DBFS)
+        val farFloor = maxOf(Pcm.percentile(farFrames, 0.10), Pcm.MIN_NOISE_FLOOR_DBFS)
 
         val nearVoiced = nearFrames.count { it > nearFloor + VOICE_MARGIN_DB }
         val farVoiced = farFrames.count { it > farFloor + VOICE_MARGIN_DB }
@@ -112,10 +119,19 @@ object TwoVoiceAnalyzer {
             return inconclusive(0.0, Pcm.SILENCE_DBFS, "No audio captured")
         }
 
-        val floor = Pcm.percentile(frames, 0.10)
+        // A floor of −120 is not a quiet room, it is a dead stream — and one-bit wobble
+        // above it would be "speech". Clamp, so a silenced capture is measured as such.
+        val floor = maxOf(Pcm.percentile(frames, 0.10), Pcm.MIN_NOISE_FLOOR_DBFS)
         val threshold = floor + VOICE_MARGIN_DB
         val voiced = frames.filter { it > threshold }.toDoubleArray()
         val voicedFraction = voiced.size.toDouble() / frames.size
+
+        // Nearly all of it digital zero, with too little real audio to judge: the phone
+        // did not feed us. That is a different fact from "the call was quiet", and the
+        // user needs the different fact — it is the one that tells them what to change.
+        if (Pcm.deadFraction(frames) >= DEAD_FRACTION && voiced.size < MIN_VOICED_FRAMES) {
+            return nothing(frames)
+        }
 
         if (voiced.size < MIN_VOICED_FRAMES || voicedFraction < MIN_VOICED_FRACTION) {
             // Said in seconds, not frames. This line is shown to the person holding the
@@ -193,6 +209,22 @@ object TwoVoiceAnalyzer {
         var sum = 0.0; var n = 0
         for (f in frames) if (f > threshold) { sum += f; n++ }
         return if (n == 0) null else sum / n
+    }
+
+    private fun nothing(frames: DoubleArray): VoiceVerdict {
+        val deadSeconds = Pcm.deadFraction(frames) * frames.size * Pcm.FRAME_MS / 1000.0
+        val totalSeconds = frames.size * Pcm.FRAME_MS / 1000.0
+        return VoiceVerdict(
+            voices = Voices.NOTHING,
+            voicedFraction = 0.0,
+            noiseFloorDbfs = Pcm.SILENCE_DBFS,
+            nearLevelDbfs = null,
+            farLevelDbfs = null,
+            separationDb = null,
+            farOccupancy = null,
+            basis = "The microphone delivered nothing for %.0f of %.0f seconds — the phone did not let Ravam hear this call"
+                .format(deadSeconds, totalSeconds),
+        )
     }
 
     private fun inconclusive(voicedFraction: Double, floor: Double, why: String) = VoiceVerdict(

@@ -23,6 +23,8 @@ data class Recording(
     val starred: Boolean = false,
     /** The far side was already boosted when this was written, so playback adds less. */
     val levelled: Boolean = false,
+    /** The call's audio was on a Bluetooth headset while this was recorded. */
+    val viaBluetooth: Boolean = false,
 ) {
     val id: String get() = file.name
 }

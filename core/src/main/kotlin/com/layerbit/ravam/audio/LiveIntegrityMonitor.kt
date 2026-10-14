@@ -107,11 +107,14 @@ class LiveIntegrityMonitor(
 
         // Seed the floor from the first window, then let it track downward only — a floor
         // that rises with the conversation would swallow the quieter speaker entirely.
+        //
+        // Clamped at what a microphone can actually be: a silenced stream must read as
+        // dead, not as a very quiet room whose one-bit wobble is "speech".
         if (!floorSeeded && window.size >= windowFrames) {
-            noiseFloor = Pcm.percentile(window.toDoubleArray(), 0.10)
+            noiseFloor = maxOf(Pcm.percentile(window.toDoubleArray(), 0.10), Pcm.MIN_NOISE_FLOOR_DBFS)
             floorSeeded = true
         } else if (floorSeeded && dbfs < noiseFloor) {
-            noiseFloor = (noiseFloor * 0.95) + (dbfs * 0.05)
+            noiseFloor = maxOf((noiseFloor * 0.95) + (dbfs * 0.05), Pcm.MIN_NOISE_FLOOR_DBFS)
         }
 
         val threshold = noiseFloor + TwoVoiceAnalyzer.VOICE_MARGIN_DB

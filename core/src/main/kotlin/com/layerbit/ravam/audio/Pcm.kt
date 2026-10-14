@@ -22,6 +22,29 @@ object Pcm {
     /** Floor for the dB conversion, so digital silence yields a finite number. */
     const val SILENCE_DBFS = -120.0
 
+    /**
+     * The quietest a *microphone* ever is. A real capture path in a silent room sits
+     * around −60 to −70 dBFS from its own electronics; anything below this is not a quiet
+     * room, it is a stream nobody is feeding — digital zero with the odd one-bit wobble,
+     * which measures at about −90.
+     *
+     * The noise-floor estimates are clamped here so that a silenced capture does not get
+     * a floor of −120 and then have its one-bit wobble counted as speech. That exact
+     * failure badged a 20-second file of zeros "Both sides" on a Bluetooth call.
+     */
+    const val MIN_NOISE_FLOOR_DBFS = -72.0
+
+    /** A frame at or below this carried nothing a microphone produced. */
+    const val DEAD_FRAME_DBFS = -80.0
+
+    /** Share of [frames] that are dead, 0..1. The signature of a silenced capture. */
+    fun deadFraction(frames: DoubleArray): Double {
+        if (frames.isEmpty()) return 1.0
+        var dead = 0
+        for (f in frames) if (f <= DEAD_FRAME_DBFS) dead++
+        return dead.toDouble() / frames.size
+    }
+
     fun frameSize(sampleRateHz: Int, frameMs: Int = FRAME_MS): Int =
         (sampleRateHz.toLong() * frameMs / 1000L).toInt().coerceAtLeast(1)
 

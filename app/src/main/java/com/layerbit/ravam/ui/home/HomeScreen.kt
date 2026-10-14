@@ -116,7 +116,11 @@ fun HomeScreen(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     if (o.isTest) testExplanation(o)
-                    else o.verdict?.basis.orEmpty(),
+                    else listOfNotNull(
+                        o.verdict?.basis,
+                        "The call was on a Bluetooth headset. Take the next one on the phone or on speaker."
+                            .takeIf { o.viaBluetooth && o.verdict?.voices == Voices.NOTHING },
+                    ).joinToString(" "),
                     style = MaterialTheme.typography.bodyMedium, color = RavamColors.TextFaint,
                 )
                 o.failure?.let {

@@ -33,6 +33,16 @@ class LiveIntegrityMonitorTest {
     }
 
     @Test
+    fun `one-bit wobble in a silenced stream is still a dead stream`() {
+        // A capture the phone never fed is not all zeros: a ±1 sample lands now and then.
+        // With the floor measured at −120 that wobble read as speech and kept resetting
+        // the silence timer, so a dead Bluetooth-headset call was never called dead.
+        val m = monitor()
+        m.offer(Signals.oneBitWobble(12_000))
+        assertEquals(LiveIntegrityMonitor.Health.DEAD_STREAM, m.health)
+    }
+
+    @Test
     fun `the far side going missing mid-call is caught`() {
         // This is the WHILE_AWAKE failure: capture is alive, the far end stops arriving,
         // and every other app in this category finds out never.
