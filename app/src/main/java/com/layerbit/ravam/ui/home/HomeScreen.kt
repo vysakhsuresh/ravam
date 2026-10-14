@@ -148,6 +148,21 @@ fun HomeScreen(
             }
         }
 
+        // Said once, plainly, before anyone relies on it. The notification and the badge
+        // repeat it at the moment it matters; this is so it is never a surprise.
+        Spacer(Modifier.height(16.dp))
+        RavamCard {
+            Text("What gets recorded", style = MaterialTheme.typography.titleMedium, color = RavamColors.TextMain)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Calls on the phone or on speaker: both sides.\n" +
+                    "Calls on a Bluetooth headset: nothing. The phone keeps that audio on the " +
+                    "headset, where Ravam can't reach it. Switch the call to the phone or " +
+                    "speaker to record it.",
+                style = MaterialTheme.typography.bodyMedium, color = RavamColors.TextMuted,
+            )
+        }
+
         if (!state.allReady) {
             Spacer(Modifier.height(16.dp))
             RavamCard {
