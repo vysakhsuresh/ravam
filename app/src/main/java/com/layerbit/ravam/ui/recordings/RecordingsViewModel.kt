@@ -80,7 +80,9 @@ class RecordingsViewModel(app: Application) : AndroidViewModel(app) {
             if (playing) startTicker()
             return
         }
-        val started = player.play(recording.file, recording.id) { onCompleted() }
+        val started = player.play(
+            recording.file, recording.id, boostMb = playbackBoostMb(recording),
+        ) { onCompleted() }
         if (!started) {
             _state.value = _state.value.copy(
                 playback = Playback(),
@@ -93,6 +95,19 @@ class RecordingsViewModel(app: Application) : AndroidViewModel(app) {
             playbackError = null,
         )
         startTicker()
+    }
+
+    /**
+     * How much louder to play this one.
+     *
+     * A recording made with the far-side boost already sits near full level, so a little
+     * is plenty. One made before the boost existed — or with it turned off — has its far
+     * side 20-odd dB down, and needs real help to be heard on a phone speaker.
+     */
+    private fun playbackBoostMb(recording: Recording): Int = when {
+        !settings.louderPlayback -> 0
+        recording.levelled -> 300
+        else -> 900
     }
 
     fun seekTo(ms: Int) {

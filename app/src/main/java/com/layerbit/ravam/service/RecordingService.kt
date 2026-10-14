@@ -81,8 +81,14 @@ class RecordingService : LifecycleService() {
         )
 
         val dir = recordingsDir(this)
-        val gain = com.layerbit.ravam.data.SettingsStore(this).gainFactor
-        val r = CallRecorder(this, tier, dir, gainFactor = gain)
+        val settings = com.layerbit.ravam.data.SettingsStore(this)
+        val r = CallRecorder(
+            this, tier, dir,
+            processing = CallRecorder.Processing(
+                boostFarSide = settings.boostFarSide,
+                noiseCancel = settings.noiseCancel,
+            ),
+        )
         recorder = r
         startedAt = System.currentTimeMillis()
 
@@ -106,6 +112,7 @@ class RecordingService : LifecycleService() {
                     voices = outcome.verdict?.voices ?: com.layerbit.ravam.audio.Voices.INCONCLUSIVE,
                     channel = activeChannel,
                     isTest = outcome.isTest,
+                    levelled = outcome.levelled,
                 )
             }
             RecordingLog.record(outcome)
@@ -202,19 +209,37 @@ class RecordingService : LifecycleService() {
         fun recordingsDir(context: Context): File =
             File(context.filesDir, "recordings").apply { mkdirs() }
 
+        /**
+         * Returns false when the system refused to let the service start.
+         *
+         * On Android 12+ a foreground service may not be started from the background, and a
+         * phone-state broadcast for an *incoming* call arrives with the app in the background.
+         * The refusal is an exception thrown straight into the receiver, which took the whole
+         * process down (seen on-device: `ForegroundServiceStartNotAllowedException ...
+         * mAllowStartForeground false`). Whether that call can be recorded at all is an open
+         * question in PLAN.md; crashing is not an acceptable answer to it either way.
+         */
         fun start(
             context: Context,
             tier: CaptureTier,
             label: String,
             channel: String = "Phone",
             isTest: Boolean = false,
-        ) {
+        ): Boolean {
             val i = Intent(context, RecordingService::class.java)
                 .putExtra(EXTRA_TIER, tier.name)
                 .putExtra(EXTRA_LABEL, label)
                 .putExtra(EXTRA_CHANNEL, channel)
                 .putExtra(EXTRA_IS_TEST, isTest)
-            context.startForegroundService(i)
+            return try {
+                context.startForegroundService(i)
+                true
+            } catch (e: Exception) {
+                // ForegroundServiceStartNotAllowedException is API 31+; catching the base type
+                // keeps this compiling for minSdk 29 and also covers SecurityException.
+                android.util.Log.w("Ravam", "Could not start recording for \"$label\": ${e.message}")
+                false
+            }
         }
 
         fun stop(context: Context) {

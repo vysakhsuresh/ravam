@@ -49,6 +49,7 @@ class RecordingStore(private val context: Context) {
             channel = meta?.optString("channel")?.ifBlank { null } ?: "Phone",
             starred = meta?.optBoolean("starred", false) ?: false,
             isTest = meta?.optBoolean("isTest", false) ?: false,
+            levelled = meta?.optBoolean("levelled", false) ?: false,
         )
     }
 
@@ -82,6 +83,7 @@ class RecordingStore(private val context: Context) {
             voices: Voices,
             channel: String,
             isTest: Boolean,
+            levelled: Boolean = false,
         ) {
             val sidecar = File(wav.parentFile, wav.nameWithoutExtension + ".json")
             val json = JSONObject()
@@ -91,6 +93,7 @@ class RecordingStore(private val context: Context) {
                 .put("voices", voices.name)
                 .put("channel", channel)
                 .put("isTest", isTest)
+                .put("levelled", levelled)
             runCatching { sidecar.writeText(json.toString()) }
         }
     }

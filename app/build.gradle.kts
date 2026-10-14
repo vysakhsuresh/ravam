@@ -12,8 +12,8 @@ android {
         applicationId = "com.layerbit.ravam"
         minSdk = 29          // Android 10 — the first release with the modern audio policy
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-probe"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -5,9 +5,12 @@ Where the app is, and what each phase delivers. A phase is **done** only when it
 
 ## Where we are now
 
-Built and **testable without a handset** (39 passing tests in `:core`):
+Built and **testable without a handset** (52 passing tests in `:core`):
 - `TwoVoiceAnalyzer` — both-sides verdict from mono or stereo audio.
 - `LiveIntegrityMonitor` — catches the far side dropping out mid-call.
+- `VoiceLeveler` — lifts the faint far side to the local voice's level on the way to
+  disk (high-pass, floor-tracked AGC, soft limiter), with an optional gate between
+  words for noise cancellation. The verdict still reads the raw stream.
 - `PcmSink` — crash-safe writing + orphan recovery.
 - `JurisdictionResolver` — strictest-rule-in-the-union, incl. the dual-SIM Gulf case.
 
@@ -16,6 +19,9 @@ Built, **not yet device-proven** (`:app` — compiles in Android Studio, not her
 - Call detection (telephony + audio-mode for VoIP).
 - Capture tier ladder + runtime selection.
 - Full UI: Home (test-record), Recordings (playback, search, star), "My phone" self-test.
+- Settings → Sound: far-side boost (default on), noise cancellation (platform suppressor
+  + software gate, default off), louder playback (`LoudnessEnhancer`, more for files
+  recorded before the boost existed).
 - Consent + jurisdiction layer with the warn-and-decide dialog.
 - Layerbit brand footer with the in-app Get Help dialog.
 

@@ -7,8 +7,9 @@ import java.io.FileInputStream
 
 /**
  * Playback for one recording at a time, with the controls a music player has: seek to any
- * point, skip forward and back, and an extra loudness boost on top of whatever gain was baked
- * in at capture — because call audio can still be quiet and the user asked to hear it clearly.
+ * point, skip forward and back, and an optional loudness boost on top of whatever levelling
+ * was done at capture — because call audio can still be quiet and the user asked to hear it
+ * clearly.
  *
  * The player holds no UI state of its own beyond the MediaPlayer; the ViewModel polls
  * [positionMs] on a timer and drives the scrubber. Keeping it dumb means seek, skip and resume
@@ -33,8 +34,12 @@ class AudioPlayer {
      * and is refused by the kernel ("Prepare failed: status=0x1", the real cause visible only in
      * logcat). Recordings are deliberately app-private, so this is not a corner case — it is
      * every recording the app makes. An already-open descriptor carries our access rights with it.
+     *
+     * @param boostMb extra playback gain in millibels (100 = 1 dB); 0 for none. Applied
+     *   through the platform's [LoudnessEnhancer], which limits as it lifts, so a file that
+     *   is already loud is squeezed rather than clipped.
      */
-    fun play(file: File, id: String, startMs: Int = 0, onComplete: () -> Unit): Boolean {
+    fun play(file: File, id: String, startMs: Int = 0, boostMb: Int = 0, onComplete: () -> Unit): Boolean {
         stop()
         return runCatching {
             FileInputStream(file).use { input ->
@@ -42,14 +47,7 @@ class AudioPlayer {
                     setDataSource(input.fd)
                     setOnCompletionListener { onComplete() }
                     prepare() // safe to close the stream after this; prepare() has read what it needs
-                    // An extra ~+8 dB on playback. LoudnessEnhancer does its own limiting, so this
-                    // lifts quiet recordings without the harsh clipping a raw volume multiply adds.
-                    runCatching {
-                        enhancer = LoudnessEnhancer(audioSessionId).apply {
-                            setTargetGain(PLAYBACK_BOOST_MB)
-                            enabled = true
-                        }
-                    }
+                    if (boostMb > 0) attachBoost(audioSessionId, boostMb)
                     if (startMs > 0) seekTo(startMs)
                     start()
                 }
@@ -93,8 +91,17 @@ class AudioPlayer {
         playingId = null
     }
 
-    private companion object {
-        /** Extra playback gain in millibels. 800 mB ≈ +8 dB. */
-        const val PLAYBACK_BOOST_MB = 800
+    /**
+     * Best effort. The effect is optional on a device and can refuse for reasons that have
+     * nothing to do with us; a recording that plays at its own level beats one that does
+     * not play.
+     */
+    private fun attachBoost(sessionId: Int, boostMb: Int) {
+        enhancer = runCatching {
+            LoudnessEnhancer(sessionId).apply {
+                setTargetGain(boostMb)
+                enabled = true
+            }
+        }.getOrNull()
     }
 }

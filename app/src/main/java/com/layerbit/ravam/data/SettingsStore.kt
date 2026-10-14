@@ -55,16 +55,35 @@ class SettingsStore(context: Context) {
         excludedNumbers = set
     }
 
+    // --- sound -------------------------------------------------------------
+    /**
+     * Lift the quieter voice — the person on the other end — up to the level of the local
+     * one, as the recording is written. On by default: this is the difference between a
+     * call you can hear and one you have to strain at.
+     */
+    var boostFarSide: Boolean
+        get() = prefs.getBoolean(BOOST_FAR, true)
+        set(v) = prefs.edit { putBoolean(BOOST_FAR, v) }
+
+    /**
+     * The platform's noise suppressor on the capture, plus a software gate that fades the
+     * gaps between words. Off by default: on some handsets a suppressor mistakes a faint
+     * far side for noise, and that must be the user's call to make after hearing it.
+     */
+    var noiseCancel: Boolean
+        get() = prefs.getBoolean(NOISE_CANCEL, false)
+        set(v) = prefs.edit { putBoolean(NOISE_CANCEL, v) }
+
+    /** Extra gain on playback, so recordings made before the boost existed are audible too. */
+    var louderPlayback: Boolean
+        get() = prefs.getBoolean(LOUDER_PLAYBACK, true)
+        set(v) = prefs.edit { putBoolean(LOUDER_PLAYBACK, v) }
+
     // --- storage -----------------------------------------------------------
     /** Delete recordings older than this many days. 0 = keep forever. Starred are never auto-deleted. */
     var retentionDays: Int
         get() = prefs.getInt(RETENTION, 0)
         set(v) = prefs.edit { putInt(RETENTION, v) }
-
-    /** How much louder to make recordings. Defaults to Loud, since call audio captures quiet. */
-    var gainFactor: Float
-        get() = prefs.getFloat(GAIN, 2.5f)
-        set(v) = prefs.edit { putFloat(GAIN, v) }
 
     private companion object {
         const val TERMS = "terms_accepted"
@@ -74,6 +93,8 @@ class SettingsStore(context: Context) {
         const val VOIP = "record_voip"
         const val EXCLUDED = "excluded_numbers"
         const val RETENTION = "retention_days"
-        const val GAIN = "gain_factor"
+        const val BOOST_FAR = "boost_far_side"
+        const val NOISE_CANCEL = "noise_cancel"
+        const val LOUDER_PLAYBACK = "louder_playback"
     }
 }

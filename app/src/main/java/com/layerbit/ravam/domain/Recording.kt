@@ -21,6 +21,8 @@ data class Recording(
     /** A mic test from the Home screen, not a call. It has no far side to judge. */
     val isTest: Boolean = false,
     val starred: Boolean = false,
+    /** The far side was already boosted when this was written, so playback adds less. */
+    val levelled: Boolean = false,
 ) {
     val id: String get() = file.name
 }
