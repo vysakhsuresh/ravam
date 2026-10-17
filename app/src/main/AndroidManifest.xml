@@ -91,6 +91,15 @@
             </intent-filter>
         </receiver>
 
+        <!-- Lets pairing run in the background while the system pairing dialog stays open. -->
+        <receiver
+            android:name=".detect.AdbPairReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.layerbit.ravam.PAIR_ADB" />
+            </intent-filter>
+        </receiver>
+
         <!-- Re-arms housekeeping and recovers crash-orphaned recordings after a restart. -->
         <receiver
             android:name=".detect.BootReceiver"
