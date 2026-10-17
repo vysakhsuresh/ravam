@@ -34,7 +34,9 @@ class PairingDiscovery(context: Context) {
             }
             override fun onServiceLost(info: NsdServiceInfo?) {}
             override fun onDiscoveryStopped(serviceType: String?) {}
-            override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {}
+            override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {
+                android.util.Log.w("RavamAdb", "mDNS start failed: type=$serviceType err=$errorCode")
+            }
             override fun onStopDiscoveryFailed(serviceType: String?, errorCode: Int) {}
         }
         listener = l

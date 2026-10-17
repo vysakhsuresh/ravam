@@ -20,6 +20,7 @@ object EmbeddedAdb {
 
     private const val PREFS = "ravam_adb"
     private const val KEY_PAIRED = "paired"
+    private const val TAG = "RavamAdb"
 
     @Volatile
     var lastError: String? = null
@@ -54,9 +55,11 @@ object EmbeddedAdb {
             // then loopback — some devices don't accept pairing on 127.0.0.1.
             val errors = StringBuilder()
             val hosts = (listOfNotNull(preferredHost) + candidateHosts()).distinct()
+            android.util.Log.i(TAG, "pair: port=$pairingPort hosts=$hosts")
             for (host in hosts) {
                 val result = runCatching { mgr.pair(host, pairingPort, code) }
                 result.onSuccess { ok ->
+                    android.util.Log.i(TAG, "pair $host -> $ok")
                     if (ok) {
                         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                             .edit().putBoolean(KEY_PAIRED, true).apply()
@@ -65,6 +68,7 @@ object EmbeddedAdb {
                     }
                     errors.append("$host: rejected; ")
                 }.onFailure {
+                    android.util.Log.w(TAG, "pair $host failed", it)
                     errors.append("$host: ${it.message ?: it.javaClass.simpleName}; ")
                 }
             }
