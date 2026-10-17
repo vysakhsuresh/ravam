@@ -30,7 +30,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        aidl = true
+    }
 
     packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 }
@@ -50,6 +53,18 @@ dependencies {
     implementation(libs.androidx.compose.ui.preview)
     implementation(libs.androidx.compose.material3)
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    // Shizuku: reach the shell UID (CAPTURE_VOICE_COMMUNICATION_OUTPUT) without root,
+    // for the privileged VoIP capture tier (PLAN.md E2).
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
+
+    // Embedded ADB: pair with the phone's own Wireless Debugging and reach the shell UID
+    // from inside Ravam, with no companion app (PLAN.md §2.3, "embedded ADB").
+    implementation(libs.libadb)
+    implementation(libs.sun.security)
+    implementation(libs.conscrypt)
+    implementation(libs.hiddenapibypass)
 
     testImplementation(libs.junit)
 }

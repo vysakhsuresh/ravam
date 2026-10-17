@@ -54,15 +54,28 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 .orEmpty().contains(app.packageName)
         }.getOrDefault(false)
 
-        val setup = listOf(
-            SetupItem("Microphone", mic, if (mic) null else "Allow Ravam to use the microphone"),
-            SetupItem("Notifications", notif, if (notif) null else "Allow Ravam to show a recording notice"),
-            SetupItem("Phone state", phone, if (phone) null else "Allow Ravam to notice when a call starts"),
-            SetupItem(
+        val setup = buildList {
+            add(SetupItem("Microphone", mic, if (mic) null else "Allow Ravam to use the microphone"))
+            add(SetupItem("Notifications", notif, if (notif) null else "Allow Ravam to show a recording notice"))
+            add(SetupItem("Phone state", phone, if (phone) null else "Allow Ravam to notice when a call starts"))
+            add(SetupItem(
                 "Call audio (Accessibility)", a11y,
                 if (a11y) null else "Turn Ravam on in Accessibility — the setting that lets it hear a call",
-            ),
-        )
+            ))
+            // Only when the user has switched on "Record the other side" in Settings.
+            if (com.layerbit.ravam.data.SettingsStore(app).privilegedCapture) {
+                val privReady = runCatching {
+                    com.layerbit.ravam.capture.shell.EmbeddedAdb.state(app) !=
+                        com.layerbit.ravam.capture.shell.EmbeddedAdb.State.NOT_PAIRED ||
+                        com.layerbit.ravam.capture.shell.ShizukuShellCapture.state(app) ==
+                        com.layerbit.ravam.capture.shell.ShizukuShellCapture.State.READY
+                }.getOrDefault(false)
+                add(SetupItem(
+                    "Record the other side (app calls)", privReady,
+                    if (privReady) null else "Pair Ravam with Wireless debugging — one time, on this phone",
+                ))
+            }
+        }
 
         _state.value = HomeState(
             tier = sel.tier,

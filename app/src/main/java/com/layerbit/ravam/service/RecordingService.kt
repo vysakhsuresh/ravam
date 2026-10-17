@@ -82,17 +82,34 @@ class RecordingService : LifecycleService() {
 
         val dir = recordingsDir(this)
         val settings = com.layerbit.ravam.data.SettingsStore(this)
-        val r = CallRecorder(
-            this, tier, dir,
-            processing = CallRecorder.Processing(
-                boostFarSide = settings.boostFarSide,
-                noiseCancel = settings.noiseCancel,
-            ),
-        )
-        recorder = r
         startedAt = System.currentTimeMillis()
 
         lifecycleScope.launch(Dispatchers.IO) {
+            // The privileged tier needs a live shell session opened before capture. Prefer
+            // Ravam's own embedded-ADB pairing (no companion app); fall back to the Shizuku
+            // app if that is what the user set up. Only ever reached when the probe found
+            // one of them ready; if neither opens, the recorder uses its mic source.
+            val session: com.layerbit.ravam.capture.shell.PcmStreamSession? =
+                if (tier == CaptureTier.PRIVILEGED_SHELL) {
+                    com.layerbit.ravam.capture.shell.EmbeddedAdb.openCaptureSession(
+                        this@RecordingService, 16_000,
+                    ) ?: com.layerbit.ravam.capture.shell.ShizukuShellCapture.openSession(
+                        this@RecordingService, 16_000,
+                    )
+                } else {
+                    null
+                }
+
+            val r = CallRecorder(
+                this@RecordingService, tier, dir,
+                processing = CallRecorder.Processing(
+                    boostFarSide = settings.boostFarSide,
+                    noiseCancel = settings.noiseCancel,
+                ),
+                shellSession = session,
+            )
+            recorder = r
+
             val outcome = r.record(label) { status ->
                 notify(buildNotification(tier, status.health, status.elapsedMs, status.route))
             }.copy(isTest = isTest)

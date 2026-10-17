@@ -15,6 +15,7 @@ import com.layerbit.ravam.audio.TwoVoiceAnalyzer
 import com.layerbit.ravam.audio.VoiceLeveler
 import com.layerbit.ravam.audio.VoiceVerdict
 import com.layerbit.ravam.capture.CaptureTier
+import com.layerbit.ravam.capture.shell.PcmStreamSession
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -42,6 +43,12 @@ class CallRecorder(
     private val outputDir: File,
     private val processing: Processing = Processing(),
     private val sampleRateHz: Int = 16_000,
+    /**
+     * When set and [tier] is [CaptureTier.PRIVILEGED_SHELL], the far end arrives from the
+     * Shizuku-backed privileged capture (PLAN.md E2) instead of an AudioRecord. The far
+     * side comes in genuinely, not as earpiece leakage, so no speakerphone is needed.
+     */
+    private val shellSession: PcmStreamSession? = null,
 ) {
 
     /** What is done to the audio between the microphone and the file. */
@@ -98,7 +105,12 @@ class CallRecorder(
     private val cancelled = AtomicBoolean(false)
 
     /** Stop the current recording. Safe to call from any thread. */
-    fun stop() = cancelled.set(true)
+    fun stop() {
+        cancelled.set(true)
+        // A blocking read on the Shizuku PCM stream only returns when the far side next
+        // sends bytes; closing the stream unblocks it so stop is immediate.
+        runCatching { shellSession?.close() }
+    }
 
     /**
      * Record until [stop] is called. Blocking — call on a background thread.
@@ -107,6 +119,9 @@ class CallRecorder(
      */
     @SuppressLint("MissingPermission")
     fun record(label: String, onStatus: (Status) -> Unit = {}): Outcome {
+        if (tier == CaptureTier.PRIVILEGED_SHELL && shellSession != null) {
+            return recordViaShell(shellSession, onStatus)
+        }
         val source = sourceFor(tier)
         val minBuffer = AudioRecord.getMinBufferSize(
             sampleRateHz, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
@@ -124,7 +139,7 @@ class CallRecorder(
         val leveler = if (processing.touchesAudio) {
             VoiceLeveler(
                 sampleRateHz,
-                maxGainDb = if (processing.boostFarSide) 24.0 else 0.0,
+                maxGainDb = if (processing.boostFarSide) farSideBoostDb() else 0.0,
                 noiseGate = processing.noiseCancel,
             )
         } else {
@@ -235,6 +250,95 @@ class CallRecorder(
     }
 
     /**
+     * Record from the Shizuku privileged capture stream (PLAN.md E2).
+     *
+     * The far end arrives as real PCM on [session], having been diverted from the
+     * voice-communication mix, so this path never touches an AudioRecord and never needs
+     * the speaker. Everything downstream — crash-safe writes, the live integrity monitor,
+     * the leveler and the end-of-call verdict — is identical to the microphone path,
+     * because the point of the project is that a recording is measured the same way no
+     * matter how the audio was captured.
+     */
+    private fun recordViaShell(session: PcmStreamSession, onStatus: (Status) -> Unit): Outcome {
+        val pcm = File(outputDir, "shell-${System.currentTimeMillis()}.pcm")
+        val sink = PcmSink(pcm, sampleRateHz)
+        val monitor = LiveIntegrityMonitor(sampleRateHz)
+        val leveler = if (processing.touchesAudio) {
+            VoiceLeveler(
+                sampleRateHz,
+                maxGainDb = if (processing.boostFarSide) farSideBoostDb() else 0.0,
+                noiseGate = processing.noiseCancel,
+            )
+        } else {
+            null
+        }
+
+        val keepSamples = sampleRateHz * MAX_ANALYSIS_SECONDS
+        val analysisBuf = ShortArray(keepSamples)
+        var analysisLen = 0
+
+        try {
+            sink.open()
+            val byteBuf = ByteArray(8192)
+            val shortBuf = ShortArray(byteBuf.size / 2)
+            var lastReported = 0
+
+            while (!cancelled.get()) {
+                val read = runCatching { session.input.read(byteBuf) }.getOrDefault(-1)
+                if (read <= 0) break
+
+                val samples = read / 2
+                var i = 0
+                while (i < samples) {
+                    val lo = byteBuf[i * 2].toInt() and 0xFF
+                    val hi = byteBuf[i * 2 + 1].toInt()
+                    shortBuf[i] = ((hi shl 8) or lo).toShort()
+                    i++
+                }
+                val slice = if (samples == shortBuf.size) shortBuf else shortBuf.copyOf(samples)
+
+                monitor.offer(slice)
+                if (analysisLen < keepSamples) {
+                    val room = minOf(samples, keepSamples - analysisLen)
+                    slice.copyInto(analysisBuf, analysisLen, 0, room)
+                    analysisLen += room
+                }
+                if (leveler != null) {
+                    val out = leveler.process(slice, samples)
+                    if (out.isNotEmpty()) sink.write(out, out.size)
+                } else {
+                    sink.write(slice, samples)
+                }
+
+                if (monitor.elapsedMs - lastReported >= 1_000) {
+                    lastReported = monitor.elapsedMs
+                    onStatus(Status(monitor.elapsedMs, monitor.health, sink.bytesWritten, Route.PHONE))
+                }
+            }
+        } finally {
+            runCatching { session.close() }
+        }
+
+        leveler?.flush()?.let { tail -> if (tail.isNotEmpty()) sink.write(tail, tail.size) }
+        val file = sink.finish()
+        val verdict = if (analysisLen > 0) {
+            TwoVoiceAnalyzer.analyzeMono(analysisBuf.copyOf(analysisLen), sampleRateHz)
+        } else {
+            null
+        }
+
+        return Outcome(
+            file = file,
+            tier = tier,
+            durationMs = monitor.elapsedMs,
+            verdict = verdict,
+            farSideGapsMs = monitor.gaps(),
+            levelled = leveler != null && processing.boostFarSide,
+            viaBluetooth = false,
+        )
+    }
+
+    /**
      * Where the call's audio is right now.
      *
      * Two questions, because they can have different answers. Where is *our capture*
@@ -284,6 +388,17 @@ class CallRecorder(
      * the far side — the quieter speaker — from the mix. Ravam attaches a suppressor only
      * when the user has turned noise cancellation on, and says so in Settings.
      */
+    /**
+     * How much the far side may be lifted, by tier.
+     *
+     * On the leakage-based tiers (accessibility, mic) the far side has been through an
+     * earpiece and is 20–30 dB down, so it needs real gain. On the privileged tier it is
+     * captured directly at full level, so only a gentle lift is applied — more than that
+     * just drives the limiter and makes loud speech sound rough.
+     */
+    private fun farSideBoostDb(): Double =
+        if (tier == CaptureTier.PRIVILEGED_SHELL) SHELL_BOOST_DB else LEAKAGE_BOOST_DB
+
     private fun sourceFor(tier: CaptureTier): Int = when (tier) {
         // Until the privileged spikes land (PLAN.md E2), these fall back to the source
         // that is known to open. They are NOT yet doing privileged capture.
@@ -296,6 +411,12 @@ class CallRecorder(
     companion object {
         /** Enough audio for a stable end-of-call verdict without holding a whole call in RAM. */
         const val MAX_ANALYSIS_SECONDS = 180
+
+        /** Far-side boost cap for leakage tiers (accessibility, mic) — the far side is faint. */
+        const val LEAKAGE_BOOST_DB = 30.0
+
+        /** Far-side boost cap for the privileged tier — it arrives full-level, so lift gently. */
+        const val SHELL_BOOST_DB = 8.0
 
         /** Put the speaker on, for the tier that depends on it. */
         fun forceSpeakerphone(context: Context, on: Boolean) = runCatching {

@@ -25,8 +25,17 @@ class TierSelector(context: Context) {
         val ladder: List<TierAvailability>,
     )
 
-    fun select(): Selection {
+    /**
+     * @param forVoip true for an app call, false for a carrier (telephony/VoLTE) call.
+     *   The privileged Shizuku tier captures the voice-communication audio path and
+     *   re-renders it; that belongs to VoIP calls only. On a carrier call it would inject
+     *   a copy back into the live call — heard as a buzz by the far party — so it is
+     *   excluded and the call falls to the accessibility/mic path, which never touches
+     *   the call's own audio.
+     */
+    fun select(forVoip: Boolean = true): Selection {
         val ladder = probe.tiers().sortedBy { it.tier.rank }
+            .filter { forVoip || it.tier != CaptureTier.PRIVILEGED_SHELL }
         val best = ladder.firstOrNull { it.isReady }
 
         if (best != null) {

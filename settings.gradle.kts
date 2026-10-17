@@ -22,6 +22,12 @@ dependencyResolutionManagement {
             includeGroupByRegex("androidx.*")
         } }
         mavenCentral()
+        // JitPack, only for the embedded-ADB library and its cert helper — the
+        // self-contained shell path that replaces the Shizuku-app dependency.
+        maven {
+            url = uri("https://jitpack.io")
+            content { includeGroupByRegex("com\\.github\\..*") }
+        }
     }
 }
 

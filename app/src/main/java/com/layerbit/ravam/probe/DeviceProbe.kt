@@ -69,15 +69,36 @@ class DeviceProbe(private val context: Context) {
      * still reach carrier audio but not app calls.
      */
     private fun shellStatus(): TierStatus {
-        val shizuku = isInstalled("moe.shizuku.privileged.api")
-        return when {
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
-                TierStatus.Unavailable(
-                    "App-call capture through this route needs Android 14 or newer " +
-                        "(this phone is on ${Build.VERSION.RELEASE})"
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            return TierStatus.Unavailable(
+                "App-call capture through this route needs Android 14 or newer " +
+                    "(this phone is on ${Build.VERSION.RELEASE})"
+            )
+        }
+        // The user controls this with the "Record the other side" switch in Settings.
+        if (!com.layerbit.ravam.data.SettingsStore(context).privilegedCapture) {
+            return TierStatus.Unavailable(
+                "Turn on \"Record the other side of app calls\" in Settings to use this"
+            )
+        }
+        // Prefer Ravam's own embedded-ADB pairing — no companion app needed.
+        when (com.layerbit.ravam.capture.shell.EmbeddedAdb.state(context)) {
+            com.layerbit.ravam.capture.shell.EmbeddedAdb.State.CONNECTED,
+            com.layerbit.ravam.capture.shell.EmbeddedAdb.State.PAIRED ->
+                return TierStatus.Ready
+            com.layerbit.ravam.capture.shell.EmbeddedAdb.State.NOT_PAIRED -> Unit
+        }
+        // Otherwise fall back to the Shizuku app if the user has set that up instead.
+        return when (com.layerbit.ravam.capture.shell.ShizukuShellCapture.state(context)) {
+            com.layerbit.ravam.capture.shell.ShizukuShellCapture.State.READY ->
+                TierStatus.Ready
+            com.layerbit.ravam.capture.shell.ShizukuShellCapture.State.NEEDS_PERMISSION ->
+                TierStatus.NeedsSetup("Shizuku is running — grant Ravam access to finish")
+            else ->
+                TierStatus.NeedsSetup(
+                    "Pair Ravam with Wireless debugging (one time, on this phone) — " +
+                        "open Set up call recording",
                 )
-            shizuku -> TierStatus.NeedsSetup("Shizuku is installed — start it, then grant Ravam access")
-            else -> TierStatus.NeedsSetup("Pair once over wireless debugging, on this phone, no PC needed")
         }
     }
 

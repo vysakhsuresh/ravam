@@ -39,6 +39,16 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(VOIP, false)
         set(v) = prefs.edit { putBoolean(VOIP, v) }
 
+    /**
+     * Privileged capture of the far side of app calls, via Ravam's own one-time Wireless
+     * Debugging pairing (no companion app). Off by default — it is the one feature that
+     * needs a setup step. When off, app calls still record, but only your side comes
+     * through strongly and the other person is faint earpiece leakage or absent.
+     */
+    var privilegedCapture: Boolean
+        get() = prefs.getBoolean(PRIVILEGED, false)
+        set(v) = prefs.edit { putBoolean(PRIVILEGED, v) }
+
     /** Contacts the user never wants recorded — a per-contact skip list, stored by number. */
     var excludedNumbers: Set<String>
         get() = prefs.getStringSet(EXCLUDED, emptySet()) ?: emptySet()
@@ -91,6 +101,7 @@ class SettingsStore(context: Context) {
         const val INCOMING = "record_incoming"
         const val OUTGOING = "record_outgoing"
         const val VOIP = "record_voip"
+        const val PRIVILEGED = "privileged_capture"
         const val EXCLUDED = "excluded_numbers"
         const val RETENTION = "retention_days"
         const val BOOST_FAR = "boost_far_side"

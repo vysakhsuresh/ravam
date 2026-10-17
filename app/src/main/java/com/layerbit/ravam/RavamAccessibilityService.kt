@@ -83,16 +83,44 @@ class RavamAccessibilityService : AccessibilityService() {
         val decision = RecordingGate.decide(this, settings, info)
         if (!decision.record) return
 
-        val tier = TierSelector(this).select().tier
+        // An app (VoIP) call: the privileged voice-communication tier is allowed here.
+        val tier = TierSelector(this).select(forVoip = true).tier
         RecordingService.start(this, tier, info.label(), channel = channel)
     }
 
     private companion object {
+        // Labels only. Recording triggers off the audio mode, so a call on an app not in
+        // this map still records — it is just labelled "App call". The list is wide on
+        // purpose: the privileged tier captures any voice-communication app by usage, so
+        // coverage should not be bottlenecked by a short hard-coded list.
         val VOIP_PACKAGES = mapOf(
             "im.thebot.messenger" to "BOTIM",
             "com.whatsapp" to "WhatsApp",
+            "com.whatsapp.w4b" to "WhatsApp Business",
             "org.telegram.messenger" to "Telegram",
             "org.thoughtcrime.securesms" to "Signal",
+            "com.microsoft.teams" to "Teams",
+            "com.microsoft.teams.personal" to "Teams",
+            "us.zoom.videomeetings" to "Zoom",
+            "com.google.android.apps.tachyon" to "Google Meet",
+            "com.google.android.gm" to "Google Meet",
+            "com.facebook.orca" to "Messenger",
+            "com.facebook.mlite" to "Messenger Lite",
+            "com.instagram.android" to "Instagram",
+            "com.discord" to "Discord",
+            "com.skype.raider" to "Skype",
+            "com.viber.voip" to "Viber",
+            "jp.naver.line.android" to "LINE",
+            "com.tencent.mm" to "WeChat",
+            "com.snapchat.android" to "Snapchat",
+            "com.imo.android.imoim" to "imo",
+            "com.imo.android.imoimbeta" to "imo",
+            "com.google.android.apps.dynamite" to "Google Chat",
+            "com.slack" to "Slack",
+            "com.truecaller" to "Truecaller",
+            "com.bria.voip" to "Bria",
+            "com.visettel.mocha" to "Mocha",
+            "com.botim.bot" to "BOTIM",
         )
     }
 }

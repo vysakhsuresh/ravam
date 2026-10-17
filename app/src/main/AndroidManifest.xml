@@ -26,9 +26,27 @@
     <queries>
         <package android:name="im.thebot.messenger" />   <!-- BOTIM -->
         <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
         <package android:name="org.telegram.messenger" />
         <package android:name="org.thoughtcrime.securesms" />
+        <package android:name="com.microsoft.teams" />
+        <package android:name="com.microsoft.teams.personal" />
+        <package android:name="us.zoom.videomeetings" />
+        <package android:name="com.google.android.apps.tachyon" />
+        <package android:name="com.facebook.orca" />
+        <package android:name="com.instagram.android" />
+        <package android:name="com.discord" />
+        <package android:name="com.skype.raider" />
+        <package android:name="com.viber.voip" />
+        <package android:name="jp.naver.line.android" />
+        <package android:name="com.tencent.mm" />
+        <package android:name="com.imo.android.imoim" />
+        <package android:name="com.slack" />
+        <package android:name="moe.shizuku.privileged.api" /> <!-- Shizuku -->
     </queries>
+
+    <!-- Shizuku: the client needs to see the Shizuku manager and talk to its binder. -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <application
         android:name=".RavamApp"
@@ -90,6 +108,15 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Shizuku binder provider: initialises the client so Shizuku.pingBinder() works. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
         <activity
             android:name=".MainActivity"

@@ -68,7 +68,10 @@ class PhoneCallReceiver : BroadcastReceiver() {
         val decision = RecordingGate.decide(context, settings, info)
         if (!decision.record) return
 
-        val tier = TierSelector(context).select().tier
+        // A carrier call, not VoIP: exclude the privileged voice-communication tier, which
+        // would inject a buzz into the live call. Carrier audio is captured via the
+        // accessibility/mic path instead.
+        val tier = TierSelector(context).select(forVoip = false).tier
         RecordingService.start(context, tier, info.label(), channel = "Phone")
     }
 

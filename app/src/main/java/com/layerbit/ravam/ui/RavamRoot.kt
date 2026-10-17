@@ -56,7 +56,7 @@ fun RavamRoot(
                 Tab.HOME -> HomeScreen(onRequestSetup = onRequestSetup)
                 Tab.RECORDINGS -> RecordingsScreen()
                 Tab.DEVICE -> ProbeScreen(onOpenUrl = onOpenUrl)
-                Tab.SETTINGS -> SettingsScreen(onOpenUrl = onOpenUrl)
+                Tab.SETTINGS -> SettingsScreen(onOpenUrl = onOpenUrl, onRequestSetup = onRequestSetup)
             }
         }
         BottomBar(current = tab, onSelect = { tab = it })
