@@ -1,17 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Scoped to nothing.
+  Scoped tight, with one deliberate exception.
 
-  accessibilityEventTypes is none, packageNames is this app alone, and no flags that
-  would allow reading window content are set. The service exists only so Ravam's UID is
-  registered as an accessibility UID, which is what AOSP's audio policy keys its
-  call-capture exemption on. It observes nothing about the user's screen, and this file
-  is the proof.
+  The service exists so Ravam's UID is registered as an accessibility UID — what AOSP's
+  audio policy keys its call-capture exemption on — and so it can notice a call starting
+  from the audio mode, which reads no screen content.
+
+  canRetrieveWindowContent is true for exactly one purpose: when the user is pairing Ravam
+  with Wireless Debugging, the service reads the six-digit pairing code and port from the
+  system's "Pair device with pairing code" dialog so it can pair in the background, without
+  the user typing anything or leaving Settings. It acts on that dialog only, only while the
+  user has armed pairing, and extracts only the code and port. See RavamAccessibilityService.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:packageNames="com.layerbit.ravam"
-    android:canRetrieveWindowContent="false"
+    android:canRetrieveWindowContent="true"
     android:notificationTimeout="100"
     android:description="@string/accessibility_description" />

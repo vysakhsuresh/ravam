@@ -19,6 +19,11 @@ import kotlinx.coroutines.launch
  */
 class AdbPairReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.getBooleanExtra("arm", false)) {
+            com.layerbit.ravam.RavamAccessibilityService.armPairing = true
+            android.util.Log.i("RavamAdb", "PAIR_ADB armed accessibility auto-pair")
+            return
+        }
         val port = intent.getIntExtra("port", -1)
         val code = intent.getStringExtra("code")
         val host = intent.getStringExtra("host")

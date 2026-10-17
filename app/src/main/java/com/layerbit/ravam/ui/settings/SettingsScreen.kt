@@ -88,18 +88,16 @@ fun SettingsScreen(onOpenUrl: (String) -> Unit, onRequestSetup: (String) -> Unit
                         style = MaterialTheme.typography.bodyMedium,
                         color = if (ready) RavamColors.Success else RavamColors.Warning,
                     )
-                    if (!ready) {
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            "Set up with Wireless debugging",
-                            color = RavamColors.BgBase,
-                            style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.clip(RoundedCornerShape(10.dp))
-                                .background(RavamColors.Accent)
-                                .clickable { onRequestSetup("Pair Ravam with Wireless debugging") }
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                        )
-                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        if (ready) "Re-pair with Wireless debugging" else "Set up with Wireless debugging",
+                        color = RavamColors.BgBase,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                            .background(RavamColors.Accent)
+                            .clickable { onRequestSetup("Pair Ravam with Wireless debugging") }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                    )
                 }
             }
 

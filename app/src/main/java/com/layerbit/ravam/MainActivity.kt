@@ -116,94 +116,52 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Pair Ravam with the phone's own Wireless Debugging — no companion app.
+     * Pair Ravam with the phone's own Wireless Debugging — hands free, no companion app,
+     * no typing, no split screen.
      *
      * Android cancels its "Pair device with pairing code" dialog the moment you leave
-     * Settings, and it hides app overlays drawn on top of that dialog, so neither a normal
-     * in-app dialog nor a floating panel works on its own. The one reliable way on-device
-     * is split screen: Settings in one pane keeps the pairing session alive while the user
-     * types the code into Ravam in the other. This dialog explains exactly that, discovers
-     * the port over mDNS so only the six-digit code must be typed, and reports the result.
+     * Settings and hides overlays over it, so a human can't comfortably copy the code into
+     * Ravam. The answer: Ravam's own Accessibility service reads the code and port straight
+     * off that dialog and pairs in the background while Settings stays open. The user only
+     * has to open the pairing dialog; Ravam does the rest.
      */
     private fun startAdbPairing() {
-        val density = resources.displayMetrics.density
-        val pad = (16 * density).toInt()
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad, pad, 0)
-        }
-        val info = TextView(this).apply {
-            text = "Do this in SPLIT SCREEN so the pairing dialog stays open:\n\n" +
-                "1. Open Recents, long-press Ravam's icon, choose \"Split screen\", pick Settings.\n" +
-                "2. In the Settings pane: Developer options → Wireless debugging → " +
-                "\"Pair device with pairing code\".\n" +
-                "3. The port fills in here automatically. Type the 6-digit code in this pane " +
-                "and tap Pair — without closing the Settings pane."
-        }
-        val status = TextView(this).apply {
-            text = "Waiting for the pairing dialog…"
-            setPadding(0, pad, 0, 0)
-        }
-        val portField = EditText(this).apply {
-            hint = "Pairing port (auto, or type it)"
-            inputType = InputType.TYPE_CLASS_NUMBER
-        }
-        val codeField = EditText(this).apply {
-            hint = "6-digit pairing code"
-            inputType = InputType.TYPE_CLASS_NUMBER
-        }
-        layout.addView(info); layout.addView(status); layout.addView(portField); layout.addView(codeField)
-
-        discoveredHost = null
-        val discovery = PairingDiscovery(this)
-        discovery.start { host, port ->
-            runOnUiThread {
-                discoveredHost = host
-                if (portField.text.isNullOrBlank()) portField.setText(port.toString())
-                status.text = "Pairing dialog found (port $port). Type the 6-digit code, tap Pair."
-            }
-        }
-
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Pair Ravam with Wireless debugging")
-            .setView(layout)
-            .setPositiveButton("Pair") { _, _ ->
-                val port = portField.text.toString().trim().toIntOrNull()
-                val code = codeField.text.toString().trim()
-                if (port == null || code.isEmpty()) {
-                    toast("Enter the pairing code (and the port if it wasn't found)")
-                } else {
-                    pairAdb(port, code, discoveredHost)
+        if (!isAccessibilityOn()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Turn on Ravam's Accessibility first")
+                .setMessage(
+                    "Ravam pairs itself by reading the pairing code for you — no typing, no " +
+                        "split screen. For that it needs its Accessibility service on, which it " +
+                        "also uses to record app calls. Open Accessibility settings now?",
+                )
+                .setPositiveButton("Open Accessibility") { _, _ ->
+                    runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
                 }
+                .setNegativeButton("Cancel", null)
+                .show()
+            return
+        }
+
+        RavamAccessibilityService.armPairing = true
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Pair Ravam — hands free")
+            .setMessage(
+                "1. Tap \"Open Wireless debugging\" below.\n" +
+                    "2. Tap \"Pair device with pairing code\".\n" +
+                    "3. Leave that dialog open. Ravam reads the code and pairs itself — you'll " +
+                    "get a message when it's done. You don't type anything.",
+            )
+            .setPositiveButton("Open Wireless debugging") { _, _ ->
+                runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
             }
-            .setNegativeButton("Cancel", null)
-            .setOnDismissListener { discovery.stop() }
+            .setNegativeButton("Cancel") { _, _ -> RavamAccessibilityService.armPairing = false }
             .show()
     }
 
-    private var discoveredHost: String? = null
-
-    private fun pairAdb(port: Int, code: String, host: String?) {
-        toast("Pairing…")
-        lifecycleScope.launch {
-            val paired = EmbeddedAdb.pair(this@MainActivity, port, code, host)
-            if (!paired) {
-                showResult("Pairing failed", EmbeddedAdb.lastError ?: "Unknown error")
-                return@launch
-            }
-            val connected = EmbeddedAdb.connect(this@MainActivity)
-            showResult(
-                if (connected) "Paired and connected" else "Paired",
-                if (connected) "Privileged recording is ready."
-                else "Paired, but not connected yet. Ravam will connect when a call starts.",
-            )
-        }
-    }
-
-    private fun showResult(title: String, message: String) = runCatching {
-        android.app.AlertDialog.Builder(this)
-            .setTitle(title).setMessage(message).setPositiveButton("OK", null).show()
-    }
+    private fun isAccessibilityOn(): Boolean = runCatching {
+        Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            .orEmpty().contains(packageName)
+    }.getOrDefault(false)
 
     private fun toast(message: String) =
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
