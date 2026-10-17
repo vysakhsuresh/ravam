@@ -7,6 +7,8 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
 import com.layerbit.ravam.audio.LiveIntegrityMonitor
@@ -294,6 +296,28 @@ class CallRecorder(
             )
         }.getOrNull()?.takeIf { it.state == AudioRecord.STATE_INITIALIZED }
 
+        // VOICE_RECOGNITION gives a raw mic, so the far end leaking out of the earpiece
+        // lands in it and shows up as a delayed second copy of their voice, with the near
+        // voice buried under it. The platform echo canceller removes that leak (referenced
+        // to what is being played), and auto-gain lifts the near voice. Without this the
+        // far side doubles and the user sounds faint — exactly the reported symptom.
+        val micSession = mic?.audioSessionId
+        val aec = micSession?.let {
+            if (AcousticEchoCanceler.isAvailable())
+                runCatching { AcousticEchoCanceler.create(it)?.apply { enabled = true } }.getOrNull()
+            else null
+        }
+        val agc = micSession?.let {
+            if (AutomaticGainControl.isAvailable())
+                runCatching { AutomaticGainControl.create(it)?.apply { enabled = true } }.getOrNull()
+            else null
+        }
+        val micNs = micSession?.let {
+            if (processing.noiseCancel && NoiseSuppressor.isAvailable())
+                runCatching { NoiseSuppressor.create(it)?.apply { enabled = true } }.getOrNull()
+            else null
+        }
+
         fun handle(slice: ShortArray, n: Int) {
             monitor.offer(if (n == slice.size) slice else slice.copyOf(n))
             if (analysisLen < keepSamples) {
@@ -374,6 +398,9 @@ class CallRecorder(
                 }
             }
         } finally {
+            runCatching { aec?.release() }
+            runCatching { agc?.release() }
+            runCatching { micNs?.release() }
             runCatching { mic?.stop() }
             runCatching { mic?.release() }
             runCatching { session.close() }
