@@ -1,6 +1,7 @@
 package com.layerbit.ravam.capture.shell
 
 import android.content.Context
+import android.provider.Settings
 import io.github.muntashirakon.adb.AdbStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,6 +36,47 @@ object EmbeddedAdb {
             .getBoolean(KEY_PAIRED, false)
         return if (paired) State.PAIRED else State.NOT_PAIRED
     }
+
+    /**
+     * Whether the privileged path can actually be used *right now* — not just whether a
+     * pairing was once stored.
+     *
+     * A cached pairing survives the user turning Developer options or Wireless debugging
+     * back off, but the pairing is worthless then: there is no `adbd` listening to connect
+     * to. Treating a stale [State.PAIRED] as ready made Home show "On" when it wasn't, and
+     * made the tier selector pick the privileged route on a real call — where the connect
+     * then stalled on its timeout and the recording came out degraded. So readiness means:
+     * already connected, or paired *and* Wireless debugging is on so a connect can succeed.
+     */
+    fun ready(context: Context): Boolean = when (state(context)) {
+        State.CONNECTED -> true
+        State.PAIRED -> wirelessDebuggingOn(context)
+        State.NOT_PAIRED -> false
+    }
+
+    /**
+     * Is Developer options switched on? Wireless debugging lives under it, so this being
+     * off guarantees the privileged path is unreachable.
+     *
+     * Read from [Settings.Global]; on the rare OEM build that refuses the read we assume
+     * on, so a genuinely working setup is never hidden — the connect-time fallback still
+     * protects the recording.
+     */
+    fun developerOptionsOn(context: Context): Boolean = runCatching {
+        Settings.Global.getInt(
+            context.contentResolver,
+            Settings.Global.DEVELOPMENT_SETTINGS_ENABLED,
+            0,
+        ) == 1
+    }.getOrDefault(true)
+
+    /** Is Wireless debugging switched on? Required before any [connect] can succeed. */
+    fun wirelessDebuggingOn(context: Context): Boolean = runCatching {
+        Settings.Global.getInt(context.contentResolver, ADB_WIFI_ENABLED, 0) == 1
+    }.getOrDefault(true)
+
+    /** The hidden `Settings.Global` key for the Wireless debugging toggle (Android 11+). */
+    private const val ADB_WIFI_ENABLED = "adb_wifi_enabled"
 
     /**
      * One-time pairing. [pairingPort] and [code] come from the phone's Wireless Debugging

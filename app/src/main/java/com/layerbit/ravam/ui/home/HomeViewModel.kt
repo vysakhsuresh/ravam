@@ -76,16 +76,28 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             ))
             // Only when the user has switched on "Record the other side" in Settings.
             if (com.layerbit.ravam.data.SettingsStore(app).privilegedCapture) {
-                val privReady = runCatching {
-                    com.layerbit.ravam.capture.shell.EmbeddedAdb.state(app) !=
-                        com.layerbit.ravam.capture.shell.EmbeddedAdb.State.NOT_PAIRED ||
-                        com.layerbit.ravam.capture.shell.ShizukuShellCapture.state(app) ==
+                val adb = com.layerbit.ravam.capture.shell.EmbeddedAdb
+                // Ready means the privileged route can actually be used now: a live Shizuku
+                // grant, or a pairing that can still connect because Wireless debugging is
+                // on. A pairing left over after Wireless debugging was turned off is stale
+                // and must not read as "On" — that was the false "Paired" the user saw.
+                val shizukuReady = runCatching {
+                    com.layerbit.ravam.capture.shell.ShizukuShellCapture.state(app) ==
                         com.layerbit.ravam.capture.shell.ShizukuShellCapture.State.READY
                 }.getOrDefault(false)
+                val pairedButOff = runCatching {
+                    adb.state(app) != com.layerbit.ravam.capture.shell.EmbeddedAdb.State.NOT_PAIRED &&
+                        !adb.wirelessDebuggingOn(app)
+                }.getOrDefault(false)
+                val privReady = shizukuReady || runCatching { adb.ready(app) }.getOrDefault(false)
                 add(SetupItem(
                     "Record the other side (app calls)", privReady,
-                    if (privReady) "On — tap to re-pair Wireless debugging"
-                    else "Pair Ravam with Wireless debugging — one time, on this phone",
+                    when {
+                        privReady -> "On — tap to re-pair Wireless debugging"
+                        pairedButOff ->
+                            "Paired, but Wireless debugging is off. Turn it on in Developer options"
+                        else -> "Pair Ravam with Wireless debugging — one time, on this phone"
+                    },
                 ))
             }
         }

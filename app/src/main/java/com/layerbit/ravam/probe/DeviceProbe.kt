@@ -82,10 +82,29 @@ class DeviceProbe(private val context: Context) {
             )
         }
         // Prefer Ravam's own embedded-ADB pairing — no companion app needed.
-        when (com.layerbit.ravam.capture.shell.EmbeddedAdb.state(context)) {
-            com.layerbit.ravam.capture.shell.EmbeddedAdb.State.CONNECTED,
-            com.layerbit.ravam.capture.shell.EmbeddedAdb.State.PAIRED ->
+        // A stored pairing is only usable while Wireless debugging is actually on; if the
+        // user has since turned Developer options or Wireless debugging off, the pairing
+        // is stale and this route cannot connect, so it is NOT ready — surface the reason
+        // instead of claiming it works (which would also steer a real call onto a route
+        // that then stalls on its connect timeout).
+        val adb = com.layerbit.ravam.capture.shell.EmbeddedAdb
+        when (adb.state(context)) {
+            com.layerbit.ravam.capture.shell.EmbeddedAdb.State.CONNECTED ->
                 return TierStatus.Ready
+            com.layerbit.ravam.capture.shell.EmbeddedAdb.State.PAIRED ->
+                return if (adb.wirelessDebuggingOn(context)) {
+                    TierStatus.Ready
+                } else if (!adb.developerOptionsOn(context)) {
+                    TierStatus.NeedsSetup(
+                        "Paired, but Developer options are off. Turn Developer options and " +
+                            "Wireless debugging back on to record the other side of app calls."
+                    )
+                } else {
+                    TierStatus.NeedsSetup(
+                        "Paired, but Wireless debugging is off. Turn it on in Developer " +
+                            "options to record the other side of app calls."
+                    )
+                }
             com.layerbit.ravam.capture.shell.EmbeddedAdb.State.NOT_PAIRED -> Unit
         }
         // Otherwise fall back to the Shizuku app if the user has set that up instead.
