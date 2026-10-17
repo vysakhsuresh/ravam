@@ -259,6 +259,7 @@ class CallRecorder(
      * because the point of the project is that a recording is measured the same way no
      * matter how the audio was captured.
      */
+    @SuppressLint("MissingPermission")
     private fun recordViaShell(session: PcmStreamSession, onStatus: (Status) -> Unit): Outcome {
         val pcm = File(outputDir, "shell-${System.currentTimeMillis()}.pcm")
         val sink = PcmSink(pcm, sampleRateHz)
@@ -277,45 +278,104 @@ class CallRecorder(
         val analysisBuf = ShortArray(keepSamples)
         var analysisLen = 0
 
+        // The privileged mix carries only the far end (the voice-communication players).
+        // The near end — the user's own voice — is the microphone, captured here in the
+        // app on VOICE_RECOGNITION, which the accessibility carve-out keeps unsilenced
+        // during the call. The mic paces the recording; the far end is mixed in as it
+        // arrives. Without this the file has one voice and the verdict lies about two.
+        val minBuf = AudioRecord.getMinBufferSize(
+            sampleRateHz, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+        )
+        val mic: AudioRecord? = runCatching {
+            AudioRecord(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION, sampleRateHz,
+                AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
+                maxOf(minBuf, 4096) * 4,
+            )
+        }.getOrNull()?.takeIf { it.state == AudioRecord.STATE_INITIALIZED }
+
+        fun handle(slice: ShortArray, n: Int) {
+            monitor.offer(if (n == slice.size) slice else slice.copyOf(n))
+            if (analysisLen < keepSamples) {
+                val room = minOf(n, keepSamples - analysisLen)
+                slice.copyInto(analysisBuf, analysisLen, 0, room)
+                analysisLen += room
+            }
+            if (leveler != null) {
+                val out = leveler.process(slice, n)
+                if (out.isNotEmpty()) sink.write(out, out.size)
+            } else {
+                sink.write(slice, n)
+            }
+        }
+
         try {
             sink.open()
-            val byteBuf = ByteArray(8192)
-            val shortBuf = ShortArray(byteBuf.size / 2)
+            mic?.startRecording()
             var lastReported = 0
 
-            while (!cancelled.get()) {
-                val read = runCatching { session.input.read(byteBuf) }.getOrDefault(-1)
-                if (read <= 0) break
+            val chunk = 2048
+            val micS = ShortArray(chunk)
+            val farBytes = ByteArray(chunk * 2)
+            val mix = ShortArray(chunk)
+            val input = session.input
 
-                val samples = read / 2
-                var i = 0
-                while (i < samples) {
-                    val lo = byteBuf[i * 2].toInt() and 0xFF
-                    val hi = byteBuf[i * 2 + 1].toInt()
-                    shortBuf[i] = ((hi shl 8) or lo).toShort()
-                    i++
+            if (mic == null) {
+                // No mic (should not happen with the permission granted): far-end only.
+                val byteBuf = ByteArray(chunk * 2)
+                while (!cancelled.get()) {
+                    val read = runCatching { input.read(byteBuf) }.getOrDefault(-1)
+                    if (read <= 0) break
+                    val samples = read / 2
+                    for (i in 0 until samples) {
+                        val lo = byteBuf[i * 2].toInt() and 0xFF
+                        val hi = byteBuf[i * 2 + 1].toInt()
+                        mix[i] = ((hi shl 8) or lo).toShort()
+                    }
+                    handle(mix, samples)
+                    if (monitor.elapsedMs - lastReported >= 1_000) {
+                        lastReported = monitor.elapsedMs
+                        onStatus(Status(monitor.elapsedMs, monitor.health, sink.bytesWritten, Route.PHONE))
+                    }
                 }
-                val slice = if (samples == shortBuf.size) shortBuf else shortBuf.copyOf(samples)
+            } else {
+                while (!cancelled.get()) {
+                    val n = mic.read(micS, 0, chunk)
+                    if (n <= 0) break
 
-                monitor.offer(slice)
-                if (analysisLen < keepSamples) {
-                    val room = minOf(samples, keepSamples - analysisLen)
-                    slice.copyInto(analysisBuf, analysisLen, 0, room)
-                    analysisLen += room
-                }
-                if (leveler != null) {
-                    val out = leveler.process(slice, samples)
-                    if (out.isNotEmpty()) sink.write(out, out.size)
-                } else {
-                    sink.write(slice, samples)
-                }
+                    // Drain whatever far-end audio is waiting, without blocking the mic clock.
+                    var farSamples = 0
+                    val avail = runCatching { input.available() }.getOrDefault(0)
+                    if (avail >= 2) {
+                        var want = minOf(avail, n * 2)
+                        if (want % 2 == 1) want -= 1
+                        if (want > 0) {
+                            val got = runCatching { input.read(farBytes, 0, want) }.getOrDefault(0)
+                            if (got > 0) farSamples = got / 2
+                        }
+                    }
 
-                if (monitor.elapsedMs - lastReported >= 1_000) {
-                    lastReported = monitor.elapsedMs
-                    onStatus(Status(monitor.elapsedMs, monitor.health, sink.bytesWritten, Route.PHONE))
+                    for (i in 0 until n) {
+                        var s = micS[i].toInt()
+                        if (i < farSamples) {
+                            val lo = farBytes[i * 2].toInt() and 0xFF
+                            val hi = farBytes[i * 2 + 1].toInt()
+                            s += ((hi shl 8) or lo).toShort().toInt()
+                            if (s > 32767) s = 32767 else if (s < -32768) s = -32768
+                        }
+                        mix[i] = s.toShort()
+                    }
+                    handle(mix, n)
+
+                    if (monitor.elapsedMs - lastReported >= 1_000) {
+                        lastReported = monitor.elapsedMs
+                        onStatus(Status(monitor.elapsedMs, monitor.health, sink.bytesWritten, Route.PHONE))
+                    }
                 }
             }
         } finally {
+            runCatching { mic?.stop() }
+            runCatching { mic?.release() }
             runCatching { session.close() }
         }
 
