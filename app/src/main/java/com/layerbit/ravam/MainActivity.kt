@@ -127,7 +127,8 @@ class MainActivity : ComponentActivity() {
         }
         val info = TextView(this).apply {
             text = "On this phone: Settings → Developer options → Wireless debugging → " +
-                "\"Pair device with pairing code\". Type the port and 6-digit code it shows."
+                "\"Pair device with pairing code\". Keep that dialog OPEN, then type the " +
+                "port and 6-digit code it shows here and tap Pair."
         }
         val portField = EditText(this).apply {
             hint = "Pairing port (e.g. 37123)"
@@ -165,14 +166,30 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val paired = EmbeddedAdb.pair(this@MainActivity, port, code)
             if (!paired) {
-                toast(EmbeddedAdb.lastError ?: "Pairing failed")
+                showResult("Pairing failed", EmbeddedAdb.lastError ?: "Unknown error")
                 return@launch
             }
             val connected = EmbeddedAdb.connect(this@MainActivity)
-            toast(
-                if (connected) "Paired and connected — privileged recording is ready"
-                else "Paired. Ravam will connect automatically when a call starts",
-            )
+            if (connected) {
+                showResult("Paired and connected", "Privileged recording is ready.")
+            } else {
+                showResult(
+                    "Paired, but not connected yet",
+                    "Pairing succeeded. Ravam couldn't reach the debugging port right now. " +
+                        "It will try again when a call starts. If it keeps failing, make sure " +
+                        "Wireless debugging is still on.\n\n" + (EmbeddedAdb.lastError ?: ""),
+                )
+            }
+        }
+    }
+
+    private fun showResult(title: String, message: String) {
+        runCatching {
+            android.app.AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message)
+                .setPositiveButton("OK", null)
+                .show()
         }
     }
 

@@ -54,13 +54,25 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 .orEmpty().contains(app.packageName)
         }.getOrDefault(false)
 
+        // Every item keeps an action so it stays tappable even once done — the user can
+        // revisit it to turn the permission or feature off or on whenever they like.
         val setup = buildList {
-            add(SetupItem("Microphone", mic, if (mic) null else "Allow Ravam to use the microphone"))
-            add(SetupItem("Notifications", notif, if (notif) null else "Allow Ravam to show a recording notice"))
-            add(SetupItem("Phone state", phone, if (phone) null else "Allow Ravam to notice when a call starts"))
+            add(SetupItem(
+                "Microphone", mic,
+                if (mic) "On — tap to manage" else "Allow Ravam to use the microphone",
+            ))
+            add(SetupItem(
+                "Notifications", notif,
+                if (notif) "On — tap to manage" else "Allow Ravam to show a recording notice",
+            ))
+            add(SetupItem(
+                "Phone state", phone,
+                if (phone) "On — tap to manage" else "Allow Ravam to notice when a call starts",
+            ))
             add(SetupItem(
                 "Call audio (Accessibility)", a11y,
-                if (a11y) null else "Turn Ravam on in Accessibility — the setting that lets it hear a call",
+                if (a11y) "On — tap to manage in Accessibility"
+                else "Turn Ravam on in Accessibility — the setting that lets it hear a call",
             ))
             // Only when the user has switched on "Record the other side" in Settings.
             if (com.layerbit.ravam.data.SettingsStore(app).privilegedCapture) {
@@ -72,7 +84,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 }.getOrDefault(false)
                 add(SetupItem(
                     "Record the other side (app calls)", privReady,
-                    if (privReady) null else "Pair Ravam with Wireless debugging — one time, on this phone",
+                    if (privReady) "On — tap to re-pair Wireless debugging"
+                    else "Pair Ravam with Wireless debugging — one time, on this phone",
                 ))
             }
         }

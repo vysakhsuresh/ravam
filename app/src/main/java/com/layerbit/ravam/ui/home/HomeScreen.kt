@@ -48,7 +48,12 @@ fun HomeScreen(
     val lastOutcome by vm.recordingLog.collectAsStateWithLifecycle(initialValue = null)
     var pendingConsent by remember { mutableStateOf<ConsentController.Prompt?>(null) }
 
-    LaunchedEffect(Unit) { vm.refresh() }
+    // Refresh whenever the screen resumes — e.g. returning from system settings or the
+    // pairing dialog — so a completed step updates immediately, not only after a tab switch.
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        vm.refresh()
+        onPauseOrDispose { }
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
@@ -163,15 +168,20 @@ fun HomeScreen(
             )
         }
 
-        if (!state.allReady) {
+        run {
             Spacer(Modifier.height(16.dp))
             RavamCard {
-                Text("Finish setup", style = MaterialTheme.typography.titleMedium, color = RavamColors.TextMain)
+                Text(
+                    if (state.allReady) "Setup" else "Finish setup",
+                    style = MaterialTheme.typography.titleMedium, color = RavamColors.TextMain,
+                )
                 Spacer(Modifier.height(10.dp))
+                // Every row stays tappable, done or not, so the user can turn a permission
+                // or the privileged feature off or back on whenever they like.
                 state.setup.forEach { item ->
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                            .then(if (item.ready) Modifier else Modifier.clickable { item.action?.let(onRequestSetup) }),
+                            .clickable { item.action?.let(onRequestSetup) },
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(

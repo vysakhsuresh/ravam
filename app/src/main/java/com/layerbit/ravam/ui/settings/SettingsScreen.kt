@@ -37,9 +37,11 @@ fun SettingsScreen(onOpenUrl: (String) -> Unit, onRequestSetup: (String) -> Unit
     var tick by remember { mutableStateOf(0) }
     fun changed() { tick++ }
 
+    // Hoisted out of key(tick) so a toggle does not reset the scroll position to the top.
+    val scroll = rememberScrollState()
     key(tick) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            Modifier.fillMaxSize().verticalScroll(scroll)
                 .systemBarsPadding().padding(horizontal = 20.dp),
         ) {
             Spacer(Modifier.height(28.dp))
