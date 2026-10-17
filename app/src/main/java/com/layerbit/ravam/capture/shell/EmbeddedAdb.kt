@@ -39,16 +39,22 @@ object EmbeddedAdb {
      * One-time pairing. [pairingPort] and [code] come from the phone's Wireless Debugging
      * screen under "Pair device with pairing code". Returns true on success.
      */
-    suspend fun pair(context: Context, pairingPort: Int, code: String): Boolean =
+    suspend fun pair(
+        context: Context,
+        pairingPort: Int,
+        code: String,
+        preferredHost: String? = null,
+    ): Boolean =
         withContext(Dispatchers.IO) {
             val mgr = runCatching { AdbConnectionManager.getInstance(context) }.getOrElse {
                 lastError = "Could not start the ADB client: ${it.message}"
                 return@withContext false
             }
-            // The pairing service may bind only to the Wi-Fi interface, not loopback, so
-            // try the phone's own IPs first and 127.0.0.1 last.
+            // Try the mDNS-resolved host first (most reliable), then the phone's own IPs,
+            // then loopback — some devices don't accept pairing on 127.0.0.1.
             val errors = StringBuilder()
-            for (host in candidateHosts()) {
+            val hosts = (listOfNotNull(preferredHost) + candidateHosts()).distinct()
+            for (host in hosts) {
                 val result = runCatching { mgr.pair(host, pairingPort, code) }
                 result.onSuccess { ok ->
                     if (ok) {

@@ -17,6 +17,7 @@ import android.widget.Toast
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.layerbit.ravam.capture.shell.EmbeddedAdb
+import com.layerbit.ravam.capture.shell.PairingDiscovery
 import com.layerbit.ravam.capture.shell.ShizukuShellCapture
 import com.layerbit.ravam.ui.RavamRoot
 import com.layerbit.ravam.ui.theme.RavamTheme
@@ -126,12 +127,18 @@ class MainActivity : ComponentActivity() {
             setPadding(pad, pad, pad, 0)
         }
         val info = TextView(this).apply {
-            text = "On this phone: Settings → Developer options → Wireless debugging → " +
-                "\"Pair device with pairing code\". Keep that dialog OPEN, then type the " +
-                "port and 6-digit code it shows here and tap Pair."
+            text = "Best done in split screen so the phone's pairing dialog stays open:\n\n" +
+                "1. Open Settings → Developer options → Wireless debugging.\n" +
+                "2. Tap \"Pair device with pairing code\" and leave it open.\n" +
+                "3. Ravam finds the port by itself. Just type the 6-digit code it shows and " +
+                "tap Pair.\n\nIf the code vanishes, open the pairing dialog again for a fresh one."
+        }
+        val status = TextView(this).apply {
+            text = "Looking for the pairing dialog…"
+            setPadding(0, pad, 0, 0)
         }
         val portField = EditText(this).apply {
-            hint = "Pairing port (e.g. 37123)"
+            hint = "Pairing port (auto-filled, or type it)"
             inputType = InputType.TYPE_CLASS_NUMBER
         }
         val codeField = EditText(this).apply {
@@ -139,8 +146,19 @@ class MainActivity : ComponentActivity() {
             inputType = InputType.TYPE_CLASS_NUMBER
         }
         layout.addView(info)
+        layout.addView(status)
         layout.addView(portField)
         layout.addView(codeField)
+
+        discoveredHost = null
+        val discovery = PairingDiscovery(this)
+        discovery.start { host, port ->
+            runOnUiThread {
+                discoveredHost = host
+                if (portField.text.isNullOrBlank()) portField.setText(port.toString())
+                status.text = "Pairing dialog found (port $port). Type the 6-digit code and tap Pair."
+            }
+        }
 
         android.app.AlertDialog.Builder(this)
             .setTitle("Pair Ravam with Wireless debugging")
@@ -152,19 +170,22 @@ class MainActivity : ComponentActivity() {
                 val port = portField.text.toString().trim().toIntOrNull()
                 val code = codeField.text.toString().trim()
                 if (port == null || code.isEmpty()) {
-                    toast("Enter the pairing port and code")
+                    toast("Enter the pairing code (and port if it wasn't found)")
                 } else {
-                    pairAdb(port, code)
+                    pairAdb(port, code, discoveredHost)
                 }
             }
             .setNegativeButton("Cancel", null)
+            .setOnDismissListener { discovery.stop() }
             .show()
     }
 
-    private fun pairAdb(port: Int, code: String) {
+    private var discoveredHost: String? = null
+
+    private fun pairAdb(port: Int, code: String, host: String?) {
         toast("Pairing…")
         lifecycleScope.launch {
-            val paired = EmbeddedAdb.pair(this@MainActivity, port, code)
+            val paired = EmbeddedAdb.pair(this@MainActivity, port, code, host)
             if (!paired) {
                 showResult("Pairing failed", EmbeddedAdb.lastError ?: "Unknown error")
                 return@launch
