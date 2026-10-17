@@ -17,6 +17,7 @@ import android.widget.Toast
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.layerbit.ravam.capture.shell.EmbeddedAdb
+import com.layerbit.ravam.capture.shell.OverlayPairing
 import com.layerbit.ravam.capture.shell.PairingDiscovery
 import com.layerbit.ravam.capture.shell.ShizukuShellCapture
 import com.layerbit.ravam.ui.RavamRoot
@@ -76,9 +77,10 @@ class MainActivity : ComponentActivity() {
         when {
             action.contains("Accessibility", ignoreCase = true) ->
                 startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            // Ravam's own shell access: pair with the phone's Wireless Debugging.
+            // Ravam's own shell access: pair with the phone's Wireless Debugging, using a
+            // floating panel so the system pairing dialog stays open while the code is typed.
             action.contains("Pair Ravam", ignoreCase = true) ->
-                showAdbPairingDialog()
+                startAdbPairing()
             // Shizuku is running but Ravam isn't authorised yet: show its grant dialog.
             action.contains("grant Ravam access", ignoreCase = true) ->
                 ShizukuShellCapture.requestPermission()
@@ -115,103 +117,30 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Pair Ravam with the phone's own Wireless Debugging — the self-contained route to the
-     * shell UID, with no companion app. The user reads a port and a six-digit code from
-     * Developer options → Wireless debugging → "Pair device with pairing code" and enters
-     * them here. Pairing is one time; after it, Ravam reconnects automatically.
+     * shell UID, with no companion app.
+     *
+     * The hard part on Android is that the system's "Pair device with pairing code" dialog
+     * cancels the moment you leave Settings, so copying the code into a normal in-app dialog
+     * loses the session. So Ravam shows a floating panel on top of everything (needs "Display
+     * over other apps"), opens Developer options for the user, and lets them type the code
+     * while Settings — and its live pairing session — stay in the foreground.
      */
-    private fun showAdbPairingDialog() {
-        val density = resources.displayMetrics.density
-        val pad = (16 * density).toInt()
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad, pad, 0)
-        }
-        val info = TextView(this).apply {
-            text = "Best done in split screen so the phone's pairing dialog stays open:\n\n" +
-                "1. Open Settings → Developer options → Wireless debugging.\n" +
-                "2. Tap \"Pair device with pairing code\" and leave it open.\n" +
-                "3. Ravam finds the port by itself. Just type the 6-digit code it shows and " +
-                "tap Pair.\n\nIf the code vanishes, open the pairing dialog again for a fresh one."
-        }
-        val status = TextView(this).apply {
-            text = "Looking for the pairing dialog…"
-            setPadding(0, pad, 0, 0)
-        }
-        val portField = EditText(this).apply {
-            hint = "Pairing port (auto-filled, or type it)"
-            inputType = InputType.TYPE_CLASS_NUMBER
-        }
-        val codeField = EditText(this).apply {
-            hint = "6-digit pairing code"
-            inputType = InputType.TYPE_CLASS_NUMBER
-        }
-        layout.addView(info)
-        layout.addView(status)
-        layout.addView(portField)
-        layout.addView(codeField)
-
-        discoveredHost = null
-        val discovery = PairingDiscovery(this)
-        discovery.start { host, port ->
-            runOnUiThread {
-                discoveredHost = host
-                if (portField.text.isNullOrBlank()) portField.setText(port.toString())
-                status.text = "Pairing dialog found (port $port). Type the 6-digit code and tap Pair."
-            }
-        }
-
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Pair Ravam with Wireless debugging")
-            .setView(layout)
-            .setNeutralButton("Open Developer options") { _, _ ->
-                runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
-            }
-            .setPositiveButton("Pair") { _, _ ->
-                val port = portField.text.toString().trim().toIntOrNull()
-                val code = codeField.text.toString().trim()
-                if (port == null || code.isEmpty()) {
-                    toast("Enter the pairing code (and port if it wasn't found)")
-                } else {
-                    pairAdb(port, code, discoveredHost)
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .setOnDismissListener { discovery.stop() }
-            .show()
-    }
-
-    private var discoveredHost: String? = null
-
-    private fun pairAdb(port: Int, code: String, host: String?) {
-        toast("Pairing…")
-        lifecycleScope.launch {
-            val paired = EmbeddedAdb.pair(this@MainActivity, port, code, host)
-            if (!paired) {
-                showResult("Pairing failed", EmbeddedAdb.lastError ?: "Unknown error")
-                return@launch
-            }
-            val connected = EmbeddedAdb.connect(this@MainActivity)
-            if (connected) {
-                showResult("Paired and connected", "Privileged recording is ready.")
-            } else {
-                showResult(
-                    "Paired, but not connected yet",
-                    "Pairing succeeded. Ravam couldn't reach the debugging port right now. " +
-                        "It will try again when a call starts. If it keeps failing, make sure " +
-                        "Wireless debugging is still on.\n\n" + (EmbeddedAdb.lastError ?: ""),
+    private fun startAdbPairing() {
+        if (!Settings.canDrawOverlays(this)) {
+            toast("Allow Ravam to display over other apps, then tap Set up again")
+            runCatching {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        "package:$packageName".toUri(),
+                    ),
                 )
             }
+            return
         }
-    }
-
-    private fun showResult(title: String, message: String) {
-        runCatching {
-            android.app.AlertDialog.Builder(this)
-                .setTitle(title)
-                .setMessage(message)
-                .setPositiveButton("OK", null)
-                .show()
-        }
+        OverlayPairing.show(applicationContext)
+        toast("Open Wireless debugging → Pair device with pairing code")
+        runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) }
     }
 
     private fun toast(message: String) =

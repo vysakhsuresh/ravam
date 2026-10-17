@@ -48,6 +48,10 @@
     <!-- Shizuku: the client needs to see the Shizuku manager and talk to its binder. -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
+    <!-- A floating input for ADB pairing that sits on top of the system's Wireless
+         Debugging dialog, so the pairing session stays alive while the code is entered. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <application
         android:name=".RavamApp"
         android:allowBackup="false"
