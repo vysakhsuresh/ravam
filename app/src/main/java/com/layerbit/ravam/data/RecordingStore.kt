@@ -51,6 +51,7 @@ class RecordingStore(private val context: Context) {
             isTest = meta?.optBoolean("isTest", false) ?: false,
             levelled = meta?.optBoolean("levelled", false) ?: false,
             viaBluetooth = meta?.optBoolean("bluetooth", false) ?: false,
+            stereo = meta?.optBoolean("stereo", false) ?: false,
         )
     }
 
@@ -86,6 +87,7 @@ class RecordingStore(private val context: Context) {
             isTest: Boolean,
             levelled: Boolean = false,
             viaBluetooth: Boolean = false,
+            stereo: Boolean = false,
         ) {
             val sidecar = File(wav.parentFile, wav.nameWithoutExtension + ".json")
             val json = JSONObject()
@@ -97,6 +99,7 @@ class RecordingStore(private val context: Context) {
                 .put("isTest", isTest)
                 .put("levelled", levelled)
                 .put("bluetooth", viaBluetooth)
+                .put("stereo", stereo)
             runCatching { sidecar.writeText(json.toString()) }
         }
     }

@@ -96,7 +96,12 @@ class PcmSink(private val pcmFile: File, private val sampleRateHz: Int, private 
          */
         fun recoverOrphans(dir: File, sampleRateHz: Int, channels: Int = 1): List<File> =
             dir.listFiles { f -> f.extension == "pcm" && f.length() > 0 }
-                ?.map { wrapAsWav(it, sampleRateHz, channels) }
+                ?.map {
+                    // A stereo capture leaves a ".2ch.pcm"; wrap it as two channels so a
+                    // crash-truncated recording recovers with its sides, not interleaved mush.
+                    val ch = if (it.name.contains(".2ch")) 2 else channels
+                    wrapAsWav(it, sampleRateHz, ch)
+                }
                 ?: emptyList()
 
         private fun header(dataLen: Int, rate: Int, channels: Int, byteRate: Int): ByteArray {

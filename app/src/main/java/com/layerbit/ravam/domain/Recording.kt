@@ -25,6 +25,8 @@ data class Recording(
     val levelled: Boolean = false,
     /** The call's audio was on a Bluetooth headset while this was recorded. */
     val viaBluetooth: Boolean = false,
+    /** Written as two channels — the local mic on the left, the remote party on the right. */
+    val stereo: Boolean = false,
 ) {
     val id: String get() = file.name
 }

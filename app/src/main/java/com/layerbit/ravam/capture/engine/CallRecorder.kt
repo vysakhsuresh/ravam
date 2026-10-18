@@ -102,16 +102,44 @@ class CallRecorder(
         val levelled: Boolean = false,
         /** True when the call's audio was on a Bluetooth headset at any point while recording. */
         val viaBluetooth: Boolean = false,
+        /**
+         * True when this was written as a two-channel file — the local microphone on the
+         * left, the remote party on the right. Only the privileged tier can do this, because
+         * only it has the two sides as genuinely separate streams. It is the one thing a
+         * leakage-based recorder can never produce, and it makes the two-voice verdict
+         * arithmetic rather than inference.
+         */
+        val stereo: Boolean = false,
     )
 
     private val cancelled = AtomicBoolean(false)
+
+    /**
+     * The far-end stream, which may arrive *after* capture has already started.
+     *
+     * Instant start: the near microphone begins the moment the call does, so no opening
+     * word is lost while the privileged shell connects (that connect can take seconds).
+     * When it does connect, [attachFarSession] hands the stream in and the far side is
+     * mixed/separated from that point on — a mid-call promotion, never a restart.
+     */
+    @Volatile
+    private var liveSession: PcmStreamSession? = shellSession
+
+    /** Hand in the far-end stream once the shell session is live. Safe to call any time. */
+    fun attachFarSession(session: PcmStreamSession) {
+        if (cancelled.get()) {
+            runCatching { session.close() }
+            return
+        }
+        liveSession = session
+    }
 
     /** Stop the current recording. Safe to call from any thread. */
     fun stop() {
         cancelled.set(true)
         // A blocking read on the Shizuku PCM stream only returns when the far side next
         // sends bytes; closing the stream unblocks it so stop is immediate.
-        runCatching { shellSession?.close() }
+        runCatching { liveSession?.close() }
     }
 
     /**
@@ -121,8 +149,8 @@ class CallRecorder(
      */
     @SuppressLint("MissingPermission")
     fun record(label: String, onStatus: (Status) -> Unit = {}): Outcome {
-        if (tier == CaptureTier.PRIVILEGED_SHELL && shellSession != null) {
-            return recordViaShell(shellSession, onStatus)
+        if (tier == CaptureTier.PRIVILEGED_SHELL) {
+            return recordViaShell(onStatus)
         }
         val source = sourceFor(tier)
         val minBuffer = AudioRecord.getMinBufferSize(
@@ -252,39 +280,29 @@ class CallRecorder(
     }
 
     /**
-     * Record from the Shizuku privileged capture stream (PLAN.md E2).
+     * Record from the privileged capture stream (PLAN.md E2), as a **two-channel** file.
      *
-     * The far end arrives as real PCM on [session], having been diverted from the
-     * voice-communication mix, so this path never touches an AudioRecord and never needs
-     * the speaker. Everything downstream — crash-safe writes, the live integrity monitor,
-     * the leveler and the end-of-call verdict — is identical to the microphone path,
-     * because the point of the project is that a recording is measured the same way no
-     * matter how the audio was captured.
+     * This is the capability no leakage-based recorder can match. The remote party arrives
+     * as real PCM on the shell session, diverted from the voice-communication mix; the local
+     * party is the microphone on VOICE_RECOGNITION, which the accessibility carve-out keeps
+     * unsilenced during a call. The two are genuinely separate streams, so Ravam writes them
+     * to genuinely separate channels: **near on the left, far on the right.** The two-voice
+     * verdict is then arithmetic — measure each channel — not the level-clustering inference
+     * the mono tiers are forced into.
+     *
+     * Instant start: capture begins with the microphone the moment the call does. The far
+     * stream is handed in by [attachFarSession] whenever the shell connect finishes, which
+     * can be seconds later; until then the right channel is silent and the left already holds
+     * the opening words. Nothing is lost waiting for a connection — a mid-call promotion, not
+     * a restart.
+     *
+     * Each side runs its own leveler, so boosting the faint far side never pumps the near
+     * side, and the echo canceller on the mic never bleeds into the clean far channel. Fed the
+     * same sample count every call, the two levelers' streaming output stays sample-aligned,
+     * so the channels never drift.
      */
     @SuppressLint("MissingPermission")
-    private fun recordViaShell(session: PcmStreamSession, onStatus: (Status) -> Unit): Outcome {
-        val pcm = File(outputDir, "shell-${System.currentTimeMillis()}.pcm")
-        val sink = PcmSink(pcm, sampleRateHz)
-        val monitor = LiveIntegrityMonitor(sampleRateHz)
-        val leveler = if (processing.touchesAudio) {
-            VoiceLeveler(
-                sampleRateHz,
-                maxGainDb = if (processing.boostFarSide) farSideBoostDb() else 0.0,
-                noiseGate = processing.noiseCancel,
-            )
-        } else {
-            null
-        }
-
-        val keepSamples = sampleRateHz * MAX_ANALYSIS_SECONDS
-        val analysisBuf = ShortArray(keepSamples)
-        var analysisLen = 0
-
-        // The privileged mix carries only the far end (the voice-communication players).
-        // The near end — the user's own voice — is the microphone, captured here in the
-        // app on VOICE_RECOGNITION, which the accessibility carve-out keeps unsilenced
-        // during the call. The mic paces the recording; the far end is mixed in as it
-        // arrives. Without this the file has one voice and the verdict lies about two.
+    private fun recordViaShell(onStatus: (Status) -> Unit): Outcome {
         val minBuf = AudioRecord.getMinBufferSize(
             sampleRateHz, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
         )
@@ -296,79 +314,62 @@ class CallRecorder(
             )
         }.getOrNull()?.takeIf { it.state == AudioRecord.STATE_INITIALIZED }
 
-        // VOICE_RECOGNITION gives a raw mic, so the far end leaking out of the earpiece
-        // lands in it and shows up as a delayed second copy of their voice, with the near
-        // voice buried under it. The platform echo canceller removes that leak (referenced
-        // to what is being played), and auto-gain lifts the near voice. Without this the
-        // far side doubles and the user sounds faint — exactly the reported symptom.
-        val micSession = mic?.audioSessionId
-        val aec = micSession?.let {
-            if (AcousticEchoCanceler.isAvailable())
-                runCatching { AcousticEchoCanceler.create(it)?.apply { enabled = true } }.getOrNull()
-            else null
-        }
-        val agc = micSession?.let {
-            if (AutomaticGainControl.isAvailable())
-                runCatching { AutomaticGainControl.create(it)?.apply { enabled = true } }.getOrNull()
-            else null
-        }
-        val micNs = micSession?.let {
-            if (processing.noiseCancel && NoiseSuppressor.isAvailable())
-                runCatching { NoiseSuppressor.create(it)?.apply { enabled = true } }.getOrNull()
-            else null
-        }
+        // Without a microphone there is no near channel to pace the file and nothing to
+        // interleave the far side against; fall back to the single-channel far-end path.
+        if (mic == null) return recordFarOnly(onStatus)
 
-        fun handle(slice: ShortArray, n: Int) {
-            monitor.offer(if (n == slice.size) slice else slice.copyOf(n))
-            if (analysisLen < keepSamples) {
-                val room = minOf(n, keepSamples - analysisLen)
-                slice.copyInto(analysisBuf, analysisLen, 0, room)
-                analysisLen += room
-            }
-            if (leveler != null) {
-                val out = leveler.process(slice, n)
-                if (out.isNotEmpty()) sink.write(out, out.size)
-            } else {
-                sink.write(slice, n)
-            }
-        }
+        // VOICE_RECOGNITION gives a raw mic, so the far end leaking out of the earpiece lands
+        // in it as a delayed second copy. The platform echo canceller removes that leak and
+        // auto-gain lifts the near voice, keeping the left channel clean of the far party.
+        val micSession = mic.audioSessionId
+        val aec = if (AcousticEchoCanceler.isAvailable())
+            runCatching { AcousticEchoCanceler.create(micSession)?.apply { enabled = true } }.getOrNull() else null
+        val agc = if (AutomaticGainControl.isAvailable())
+            runCatching { AutomaticGainControl.create(micSession)?.apply { enabled = true } }.getOrNull() else null
+        val micNs = if (processing.noiseCancel && NoiseSuppressor.isAvailable())
+            runCatching { NoiseSuppressor.create(micSession)?.apply { enabled = true } }.getOrNull() else null
+
+        // The ".2ch" marker lets orphan recovery wrap a crash-truncated file as stereo.
+        val pcm = File(outputDir, "shell-${System.currentTimeMillis()}.2ch.pcm")
+        val sink = PcmSink(pcm, sampleRateHz, channels = 2)
+        val monitor = LiveIntegrityMonitor(sampleRateHz)
+
+        fun leveler(maxGainDb: Double) = if (processing.touchesAudio) {
+            VoiceLeveler(
+                sampleRateHz,
+                maxGainDb = if (processing.boostFarSide) maxGainDb else 0.0,
+                noiseGate = processing.noiseCancel,
+            )
+        } else null
+        val nearLeveler = leveler(NEAR_BOOST_DB)
+        val farLeveler = leveler(SHELL_BOOST_DB)
+
+        // The verdict reads each channel raw — before levelling — so it describes what was
+        // captured, not what was done to it.
+        val keepSamples = sampleRateHz * MAX_ANALYSIS_SECONDS
+        val analysisNear = ShortArray(keepSamples); var nearLen = 0
+        val analysisFar = ShortArray(keepSamples); var farLen = 0
 
         try {
             sink.open()
-            mic?.startRecording()
+            mic.startRecording()
             var lastReported = 0
 
             val chunk = 2048
             val micS = ShortArray(chunk)
             val farBytes = ByteArray(chunk * 2)
-            val mix = ShortArray(chunk)
-            val input = session.input
+            val farRaw = ShortArray(chunk)
+            val mono = ShortArray(chunk)
 
-            if (mic == null) {
-                // No mic (should not happen with the permission granted): far-end only.
-                val byteBuf = ByteArray(chunk * 2)
-                while (!cancelled.get()) {
-                    val read = runCatching { input.read(byteBuf) }.getOrDefault(-1)
-                    if (read <= 0) break
-                    val samples = read / 2
-                    for (i in 0 until samples) {
-                        val lo = byteBuf[i * 2].toInt() and 0xFF
-                        val hi = byteBuf[i * 2 + 1].toInt()
-                        mix[i] = ((hi shl 8) or lo).toShort()
-                    }
-                    handle(mix, samples)
-                    if (monitor.elapsedMs - lastReported >= 1_000) {
-                        lastReported = monitor.elapsedMs
-                        onStatus(Status(monitor.elapsedMs, monitor.health, sink.bytesWritten, Route.PHONE))
-                    }
-                }
-            } else {
-                while (!cancelled.get()) {
-                    val n = mic.read(micS, 0, chunk)
-                    if (n <= 0) break
+            while (!cancelled.get()) {
+                val n = mic.read(micS, 0, chunk)
+                if (n <= 0) break
 
-                    // Drain whatever far-end audio is waiting, without blocking the mic clock.
-                    var farSamples = 0
+                // Drain waiting far-end audio without blocking the mic clock. The session is
+                // null until it is attached mid-call; the right channel is silent until then.
+                var farSamples = 0
+                val input = liveSession?.input
+                if (input != null) {
                     val avail = runCatching { input.available() }.getOrDefault(0)
                     if (avail >= 2) {
                         var want = minOf(avail, n * 2)
@@ -378,38 +379,64 @@ class CallRecorder(
                             if (got > 0) farSamples = got / 2
                         }
                     }
+                }
+                for (i in 0 until n) {
+                    farRaw[i] = if (i < farSamples) {
+                        val lo = farBytes[i * 2].toInt() and 0xFF
+                        val hi = farBytes[i * 2 + 1].toInt()
+                        ((hi shl 8) or lo).toShort()
+                    } else 0
+                }
 
-                    for (i in 0 until n) {
-                        var s = micS[i].toInt()
-                        if (i < farSamples) {
-                            val lo = farBytes[i * 2].toInt() and 0xFF
-                            val hi = farBytes[i * 2 + 1].toInt()
-                            s += ((hi shl 8) or lo).toShort().toInt()
-                            if (s > 32767) s = 32767 else if (s < -32768) s = -32768
-                        }
-                        mix[i] = s.toShort()
-                    }
-                    handle(mix, n)
+                // Live health sees a mono mix of the two sides; the verdict sees each side.
+                for (i in 0 until n) {
+                    var s = micS[i].toInt() + farRaw[i].toInt()
+                    if (s > 32767) s = 32767 else if (s < -32768) s = -32768
+                    mono[i] = s.toShort()
+                }
+                monitor.offer(if (n == chunk) mono else mono.copyOf(n))
+                if (nearLen < keepSamples) {
+                    val room = minOf(n, keepSamples - nearLen)
+                    micS.copyInto(analysisNear, nearLen, 0, room); nearLen += room
+                }
+                if (farLen < keepSamples) {
+                    val room = minOf(n, keepSamples - farLen)
+                    farRaw.copyInto(analysisFar, farLen, 0, room); farLen += room
+                }
 
-                    if (monitor.elapsedMs - lastReported >= 1_000) {
-                        lastReported = monitor.elapsedMs
-                        onStatus(Status(monitor.elapsedMs, monitor.health, sink.bytesWritten, Route.PHONE))
-                    }
+                // To disk: levelled per channel, interleaved as L = near, R = far.
+                if (nearLeveler != null && farLeveler != null) {
+                    val l = nearLeveler.process(micS, n)
+                    val r = farLeveler.process(farRaw, n)
+                    writeStereo(sink, l, r, minOf(l.size, r.size))
+                } else {
+                    writeStereo(sink, micS, farRaw, n)
+                }
+
+                if (monitor.elapsedMs - lastReported >= 1_000) {
+                    lastReported = monitor.elapsedMs
+                    onStatus(Status(monitor.elapsedMs, monitor.health, sink.bytesWritten, Route.PHONE))
                 }
             }
         } finally {
             runCatching { aec?.release() }
             runCatching { agc?.release() }
             runCatching { micNs?.release() }
-            runCatching { mic?.stop() }
-            runCatching { mic?.release() }
-            runCatching { session.close() }
+            runCatching { mic.stop() }
+            runCatching { mic.release() }
+            runCatching { liveSession?.close() }
         }
 
-        leveler?.flush()?.let { tail -> if (tail.isNotEmpty()) sink.write(tail, tail.size) }
+        // Drain the levelers' held-back final block, keeping the channels aligned.
+        if (nearLeveler != null && farLeveler != null) {
+            val l = nearLeveler.flush(); val r = farLeveler.flush()
+            writeStereo(sink, l, r, minOf(l.size, r.size))
+        }
         val file = sink.finish()
-        val verdict = if (analysisLen > 0) {
-            TwoVoiceAnalyzer.analyzeMono(analysisBuf.copyOf(analysisLen), sampleRateHz)
+        val verdict = if (nearLen > 0 || farLen > 0) {
+            TwoVoiceAnalyzer.analyzeStereo(
+                analysisNear.copyOf(nearLen), analysisFar.copyOf(farLen), sampleRateHz,
+            )
         } else {
             null
         }
@@ -420,8 +447,82 @@ class CallRecorder(
             durationMs = monitor.elapsedMs,
             verdict = verdict,
             farSideGapsMs = monitor.gaps(),
-            levelled = leveler != null && processing.boostFarSide,
+            levelled = nearLeveler != null && processing.boostFarSide,
             viaBluetooth = false,
+            stereo = true,
+        )
+    }
+
+    /** Interleave two equal-length channels (L = near, R = far) and write [n] frames. */
+    private fun writeStereo(sink: PcmSink, left: ShortArray, right: ShortArray, n: Int) {
+        if (n <= 0) return
+        val out = ShortArray(n * 2)
+        for (i in 0 until n) { out[i * 2] = left[i]; out[i * 2 + 1] = right[i] }
+        sink.write(out, n * 2)
+    }
+
+    /**
+     * Degenerate fallback: the far end only, mono, when no microphone could be opened.
+     * Should not happen with RECORD_AUDIO granted, but one real side beats none.
+     */
+    @SuppressLint("MissingPermission")
+    private fun recordFarOnly(onStatus: (Status) -> Unit): Outcome {
+        val pcm = File(outputDir, "shell-${System.currentTimeMillis()}.pcm")
+        val sink = PcmSink(pcm, sampleRateHz)
+        val monitor = LiveIntegrityMonitor(sampleRateHz)
+        val leveler = if (processing.touchesAudio) {
+            VoiceLeveler(
+                sampleRateHz,
+                maxGainDb = if (processing.boostFarSide) SHELL_BOOST_DB else 0.0,
+                noiseGate = processing.noiseCancel,
+            )
+        } else null
+        val keepSamples = sampleRateHz * MAX_ANALYSIS_SECONDS
+        val analysisBuf = ShortArray(keepSamples); var analysisLen = 0
+        try {
+            sink.open()
+            var lastReported = 0
+            val chunk = 2048
+            val byteBuf = ByteArray(chunk * 2)
+            val mix = ShortArray(chunk)
+            while (!cancelled.get()) {
+                val input = liveSession?.input ?: break
+                val read = runCatching { input.read(byteBuf) }.getOrDefault(-1)
+                if (read <= 0) break
+                val samples = read / 2
+                for (i in 0 until samples) {
+                    val lo = byteBuf[i * 2].toInt() and 0xFF
+                    val hi = byteBuf[i * 2 + 1].toInt()
+                    mix[i] = ((hi shl 8) or lo).toShort()
+                }
+                monitor.offer(if (samples == chunk) mix else mix.copyOf(samples))
+                if (analysisLen < keepSamples) {
+                    val room = minOf(samples, keepSamples - analysisLen)
+                    mix.copyInto(analysisBuf, analysisLen, 0, room); analysisLen += room
+                }
+                if (leveler != null) {
+                    val out = leveler.process(mix, samples); if (out.isNotEmpty()) sink.write(out, out.size)
+                } else {
+                    sink.write(mix, samples)
+                }
+                if (monitor.elapsedMs - lastReported >= 1_000) {
+                    lastReported = monitor.elapsedMs
+                    onStatus(Status(monitor.elapsedMs, monitor.health, sink.bytesWritten, Route.PHONE))
+                }
+            }
+        } finally {
+            runCatching { liveSession?.close() }
+        }
+        leveler?.flush()?.let { tail -> if (tail.isNotEmpty()) sink.write(tail, tail.size) }
+        val file = sink.finish()
+        val verdict = if (analysisLen > 0) {
+            TwoVoiceAnalyzer.analyzeMono(analysisBuf.copyOf(analysisLen), sampleRateHz)
+        } else {
+            null
+        }
+        return Outcome(
+            file, tier, monitor.elapsedMs, verdict, monitor.gaps(),
+            levelled = leveler != null && processing.boostFarSide, viaBluetooth = false, stereo = false,
         )
     }
 
@@ -504,6 +605,10 @@ class CallRecorder(
 
         /** Far-side boost cap for the privileged tier — it arrives full-level, so lift gently. */
         const val SHELL_BOOST_DB = 8.0
+
+        /** Near-side boost cap on the stereo path — the close mic is already loud; only a
+         *  gentle normalisation so a soft-spoken user is not left faint on the left channel. */
+        const val NEAR_BOOST_DB = 6.0
 
         /** Put the speaker on, for the tier that depends on it. */
         fun forceSpeakerphone(context: Context, on: Boolean) = runCatching {

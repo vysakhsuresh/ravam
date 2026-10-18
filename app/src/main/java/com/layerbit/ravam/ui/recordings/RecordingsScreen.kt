@@ -189,10 +189,21 @@ private fun RecordingRow(
         // A mic test has no far side, so a both-sides verdict would be a result about a
         // question it never asked. Home says "Mic works" for the same file; the library
         // must not contradict it with a grey "Not enough speech".
-        if (rec.isTest) {
-            StatusBadge("Mic test", RavamColors.TextMuted, Color(0x14FFFFFF))
-        } else {
-            VerdictBadge(rec.voices)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (rec.isTest) {
+                StatusBadge("Mic test", RavamColors.TextMuted, Color(0x14FFFFFF))
+            } else {
+                VerdictBadge(rec.voices)
+            }
+            // Only the privileged tier produces a true two-channel recording — the two sides
+            // on separate channels. Showing it is showing the one thing no other recorder on
+            // the phone can do.
+            if (rec.stereo && !rec.isTest) {
+                StatusBadge("Stereo", RavamColors.Accent, Color(0x1F28C2FF))
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             val context = LocalContext.current

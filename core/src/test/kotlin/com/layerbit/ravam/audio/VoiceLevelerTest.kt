@@ -185,4 +185,31 @@ class VoiceLevelerTest {
         val diff = turnLevel(out, 5) - turnLevel(call, 5)
         assertTrue("gain crept in: $diff dB", abs(diff) < 1.0)
     }
+
+    @Test
+    fun `two levelers fed the same chunk sizes stay sample-aligned`() {
+        // The stereo capture path runs one leveler per channel and interleaves their output
+        // L and R. That only yields aligned channels if, fed the same count every call, the
+        // two emit the same number of samples every call. Lock that invariant here: it is
+        // what keeps the near and far channels from drifting apart over a long call.
+        val near = Signals.oneSpeaker(turns = 10, level = -16.0)
+        val far = Signals.oneSpeaker(turns = 10, level = -30.0)
+        val ln = VoiceLeveler(rate, maxGainDb = 6.0)   // near cap
+        val lf = VoiceLeveler(rate, maxGainDb = 8.0)   // far cap — different gain, same timing
+        val n = minOf(near.size, far.size)
+        // Feed in deliberately irregular chunk sizes, as a real mic read would.
+        val sizes = listOf(2048, 2048, 1000, 777, 2048, 333, 2048)
+        var i = 0; var si = 0
+        var nearTotal = 0; var farTotal = 0
+        while (i < n) {
+            val take = minOf(sizes[si % sizes.size], n - i); si++
+            val a = ln.process(near.copyOfRange(i, i + take), take)
+            val b = lf.process(far.copyOfRange(i, i + take), take)
+            assertEquals("channels drifted at offset $i", a.size, b.size)
+            nearTotal += a.size; farTotal += b.size
+            i += take
+        }
+        assertEquals(ln.flush().size, lf.flush().size)
+        assertEquals(nearTotal, farTotal)
+    }
 }
