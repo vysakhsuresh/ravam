@@ -37,6 +37,15 @@ fun SettingsScreen(onOpenUrl: (String) -> Unit, onRequestSetup: (String) -> Unit
     var tick by remember { mutableStateOf(0) }
     fun changed() { tick++ }
 
+    // A full-page, plain-language explainer of what records and what each call needs. Kept as
+    // its own page so the one rule users most need — app calls and Bluetooth calls capture the
+    // other person only on Wi-Fi with Wireless debugging on — is stated clearly, not buried.
+    var showHelp by remember { mutableStateOf(false) }
+    if (showHelp) {
+        com.layerbit.ravam.ui.help.HowRecordingScreen(onBack = { showHelp = false })
+        return
+    }
+
     // Hoisted out of key(tick) so a toggle does not reset the scroll position to the top.
     val scroll = rememberScrollState()
     key(tick) {
@@ -47,6 +56,28 @@ fun SettingsScreen(onOpenUrl: (String) -> Unit, onRequestSetup: (String) -> Unit
             Spacer(Modifier.height(28.dp))
             Text("Settings", style = MaterialTheme.typography.displaySmall, color = RavamColors.TextMain)
             Spacer(Modifier.height(20.dp))
+
+            RavamCard(modifier = Modifier.clickable { showHelp = true }) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            "How recording works",
+                            style = MaterialTheme.typography.titleMedium, color = RavamColors.TextMain,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "What gets recorded, and why app calls need Wi-Fi and Wireless debugging.",
+                            style = MaterialTheme.typography.bodyMedium, color = RavamColors.TextMuted,
+                        )
+                    }
+                    Text("›", style = MaterialTheme.typography.titleLarge, color = RavamColors.Accent)
+                }
+            }
+            Spacer(Modifier.height(16.dp))
 
             RavamCard {
                 Text(
