@@ -27,6 +27,12 @@ data class Recording(
     val viaBluetooth: Boolean = false,
     /** Written as two channels — the local mic on the left, the remote party on the right. */
     val stereo: Boolean = false,
+    /**
+     * A plain-language note shown with the recording when the other side was captured by the
+     * microphone only (e.g. Wireless debugging was off), so a faint or missing far side is
+     * explained rather than left a mystery. Null when the far side came through cleanly.
+     */
+    val farNote: String? = null,
 ) {
     val id: String get() = file.name
 }

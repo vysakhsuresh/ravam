@@ -234,6 +234,14 @@ private fun RecordingRow(
             style = MaterialTheme.typography.bodyMedium, color = RavamColors.TextFaint,
         )
     }
+    // When the other side came through the microphone only (e.g. Wireless debugging off), say
+    // why — but not when both sides were heard anyway, where the note would only mislead.
+    rec.farNote?.let { note ->
+        if (!rec.isTest && rec.voices != com.layerbit.ravam.audio.Voices.BOTH_SIDES) {
+            Spacer(Modifier.height(6.dp))
+            Text(note, style = MaterialTheme.typography.bodyMedium, color = RavamColors.TextFaint)
+        }
+    }
 }
 
 /**

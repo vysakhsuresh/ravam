@@ -127,6 +127,24 @@ class RecordingService : LifecycleService() {
             // that refreshes the instant RecordingLog emits already sees the verdict and
             // channel, not a bare file. No legal flags are stored, only what a user wants to
             // see: a name, the time, how long, and whether both sides were heard (PLAN.md §6).
+            // If the user asked to record the other side but it did NOT come through the
+            // privileged path, the other side is mic-only — fainter, and absent on Bluetooth.
+            // Say so on the recording, with the cause, so a weak far side is never a mystery.
+            // Wireless debugging needs Wi-Fi, so on mobile data or a locked-down network it is
+            // off and this is expected; the remedy is to turn it on or use speakerphone.
+            val farNote: String? = if (!isTest && settings.privilegedCapture && !outcome.farSideViaPrivileged) {
+                if (!com.layerbit.ravam.capture.shell.EmbeddedAdb.wirelessDebuggingOn(this@RecordingService)) {
+                    "The other side was recorded through the microphone only, because Wireless " +
+                        "debugging is off (it needs Wi-Fi — it switches off on mobile data). Turn " +
+                        "it on in Developer options, or use speakerphone, to capture them clearly."
+                } else {
+                    "The other side was recorded through the microphone only. Use speakerphone to " +
+                        "capture them clearly, or re-pair Wireless debugging for full-quality capture."
+                }
+            } else {
+                null
+            }
+
             outcome.file?.let { file ->
                 val name = java.text.SimpleDateFormat("d MMM yyyy, h:mm a", java.util.Locale.getDefault())
                     .format(java.util.Date(file.lastModified()))
@@ -141,6 +159,7 @@ class RecordingService : LifecycleService() {
                     levelled = outcome.levelled,
                     viaBluetooth = outcome.viaBluetooth,
                     stereo = outcome.stereo,
+                    farNote = farNote,
                 )
             }
             RecordingLog.record(outcome)

@@ -110,9 +110,20 @@ class CallRecorder(
          * arithmetic rather than inference.
          */
         val stereo: Boolean = false,
+        /**
+         * True when the far end was captured through the privileged shell (VoIP mix or carrier
+         * downlink). False means the other side, if present at all, came only from the
+         * microphone — earpiece leakage — which is fainter and absent on Bluetooth. The UI uses
+         * this to tell the user *why* the other side may be weak, e.g. Wireless debugging off.
+         */
+        val farSideViaPrivileged: Boolean = false,
     )
 
     private val cancelled = AtomicBoolean(false)
+
+    /** Set once the far-end shell stream is handed in; stays set for the recording's life. */
+    @Volatile
+    private var farAttached: Boolean = shellSession != null
 
     /**
      * The far-end stream, which may arrive *after* capture has already started.
@@ -132,6 +143,7 @@ class CallRecorder(
             return
         }
         liveSession = session
+        farAttached = true
     }
 
     /** Stop the current recording. Safe to call from any thread. */
@@ -450,6 +462,7 @@ class CallRecorder(
             levelled = nearLeveler != null && processing.boostFarSide,
             viaBluetooth = false,
             stereo = true,
+            farSideViaPrivileged = farAttached,
         )
     }
 
@@ -523,6 +536,7 @@ class CallRecorder(
         return Outcome(
             file, tier, monitor.elapsedMs, verdict, monitor.gaps(),
             levelled = leveler != null && processing.boostFarSide, viaBluetooth = false, stereo = false,
+            farSideViaPrivileged = farAttached,
         )
     }
 
