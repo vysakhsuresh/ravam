@@ -28,21 +28,14 @@ class TierSelector(context: Context) {
     /**
      * @param forVoip true for an app call, false for a carrier (telephony/VoLTE) call.
      *   The privileged Shizuku tier captures the voice-communication audio path and
-     *   re-renders it; on a carrier call that re-rendered copy comes out of the phone's
-     *   earpiece, is picked up by the phone's own microphone, and travels back up the
-     *   uplink as a buzz the far party hears — so it is excluded for carrier calls on the
-     *   handset, which fall to the accessibility/mic path instead.
-     * @param onBluetooth true when the call's audio is on a Bluetooth headset. This is the
-     *   one case where the privileged tier is safe on a carrier call: the uplink is the
-     *   headset's microphone, not the phone's, so the re-rendered copy is never picked up
-     *   and never buzzes the far party. It is also the only way to reach the far end there,
-     *   because on Bluetooth nothing leaks into the phone mic for the accessibility tier to
-     *   capture. (This is exactly why an app call over Bluetooth already works.)
+     *   re-renders it; that belongs to VoIP calls only. On a carrier call it would inject
+     *   a copy back into the live call — heard as a buzz by the far party — so it is
+     *   excluded and the call falls to the accessibility/mic path, which never touches
+     *   the call's own audio.
      */
-    fun select(forVoip: Boolean = true, onBluetooth: Boolean = false): Selection {
-        val allowPrivileged = forVoip || onBluetooth
+    fun select(forVoip: Boolean = true): Selection {
         val ladder = probe.tiers().sortedBy { it.tier.rank }
-            .filter { allowPrivileged || it.tier != CaptureTier.PRIVILEGED_SHELL }
+            .filter { forVoip || it.tier != CaptureTier.PRIVILEGED_SHELL }
         val best = ladder.firstOrNull { it.isReady }
 
         if (best != null) {
