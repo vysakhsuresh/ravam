@@ -68,11 +68,39 @@ class PhoneCallReceiver : BroadcastReceiver() {
         val decision = RecordingGate.decide(context, settings, info)
         if (!decision.record) return
 
-        // A carrier call, not VoIP: exclude the privileged voice-communication tier, which
-        // would inject a buzz into the live call. Carrier audio is captured via the
-        // accessibility/mic path instead.
-        val tier = TierSelector(context).select(forVoip = false).tier
+        // A carrier call. On the handset the far end leaks into the mic for the accessibility
+        // tier. On a Bluetooth headset nothing leaks, so the far end is only reachable through
+        // the privileged tier — which, for a carrier call, taps the telephony downlink
+        // directly (RecordingService), with no re-render and so no buzz. Gate it strictly on
+        // the real Bluetooth route; a misread as Bluetooth is the only way this could buzz.
+        val onBluetooth = callIsOnBluetooth(context)
+        val tier = TierSelector(context).select(forVoip = false, onBluetooth = onBluetooth).tier
         RecordingService.start(context, tier, info.label(), channel = "Phone")
+    }
+
+    /**
+     * Is the call's audio actually on a Bluetooth headset right now?
+     *
+     * This gates the privileged tier for carrier calls, so it must be the *real* route, not
+     * merely "a headset is paired". [AudioManager.getCommunicationDevice] is the platform's
+     * canonical answer to "where is communication audio going"; SCO is a secondary signal.
+     */
+    private fun callIsOnBluetooth(context: Context): Boolean {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            val type = runCatching { am.communicationDevice?.type }.getOrNull()
+            if (type != null && type.isBluetoothRoute()) return true
+        }
+        @Suppress("DEPRECATION")
+        if (runCatching { am.isBluetoothScoOn }.getOrDefault(false)) return true
+        return false
+    }
+
+    private fun Int.isBluetoothRoute(): Boolean = when (this) {
+        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        android.media.AudioDeviceInfo.TYPE_BLE_HEADSET,
+        android.media.AudioDeviceInfo.TYPE_BLE_BROADCAST -> true
+        else -> false
     }
 
     private enum class Call { IDLE, RINGING, ACTIVE }

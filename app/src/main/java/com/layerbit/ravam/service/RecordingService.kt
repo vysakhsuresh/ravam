@@ -100,12 +100,21 @@ class RecordingService : LifecycleService() {
             // the moment it connects, which can be seconds later. No opening word is lost
             // waiting for a connection; the far side is promoted into the recording live.
             if (tier == CaptureTier.PRIVILEGED_SHELL) {
+                // A carrier call (channel "Phone") taps the telephony downlink; a VoIP call
+                // taps the voice-communication playback mix. The Shizuku fallback only does
+                // the VoIP mix and re-renders it, so it is never used for a carrier call —
+                // that re-render is exactly what buzzes the far party.
+                val carrierCall = channel == "Phone"
                 launch(Dispatchers.IO) {
                     val session = com.layerbit.ravam.capture.shell.EmbeddedAdb.openCaptureSession(
-                        this@RecordingService, 16_000,
-                    ) ?: com.layerbit.ravam.capture.shell.ShizukuShellCapture.openSession(
-                        this@RecordingService, 16_000,
-                    )
+                        this@RecordingService, 16_000, carrier = carrierCall,
+                    ) ?: if (carrierCall) {
+                        null
+                    } else {
+                        com.layerbit.ravam.capture.shell.ShizukuShellCapture.openSession(
+                            this@RecordingService, 16_000,
+                        )
+                    }
                     if (session != null) r.attachFarSession(session)
                 }
             }

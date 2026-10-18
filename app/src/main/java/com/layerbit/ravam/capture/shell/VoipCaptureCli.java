@@ -20,14 +20,18 @@ public final class VoipCaptureCli {
 
     public static void main(String[] args) {
         int rate = args.length > 0 ? safeInt(args[0], 16000) : 16000;
+        // Second arg "carrier" taps the telephony downlink (VOICE_DOWNLINK) for a cellular
+        // call instead of the VoIP voice-communication mix. No loop-back, so no buzz.
+        boolean carrier = args.length > 1 && "carrier".equals(args[1].trim());
 
         VoipCaptureCore core = new VoipCaptureCore();
-        if (!core.start(rate)) {
+        boolean started = carrier ? core.startDownlink(rate) : core.start(rate);
+        if (!started) {
             System.err.println("E2_FAIL:" + core.lastError());
             System.exit(2);
             return;
         }
-        System.err.println("E2_OK:" + rate);
+        System.err.println("E2_OK:" + rate + (carrier ? ":carrier" : ""));
 
         // Stop cleanly when the app closes the ADB stream (stdin reaches EOF).
         final Thread main = Thread.currentThread();

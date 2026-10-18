@@ -89,6 +89,63 @@ public final class VoipCaptureCore {
         }
     }
 
+    /**
+     * Start capturing the far end of a *carrier* call, from the telephony downlink.
+     *
+     * Unlike {@link #start}, this opens no AudioPolicy and does no loop-back re-render: it is
+     * a plain {@link AudioRecord} on VOICE_DOWNLINK (source 3), attributed to com.android.shell
+     * — which on this device holds CAPTURE_AUDIO_OUTPUT. Because nothing is re-rendered into the
+     * call, the far party hears no buzz, and because the downlink is tapped directly it works on
+     * a Bluetooth headset as well as the earpiece. The near side is captured separately by the
+     * app's own microphone, exactly as for the VoIP path, so the two still become a stereo file.
+     *
+     * If a device's audio HAL refuses to feed the downlink (some do), the capture simply
+     * delivers silence — a safe failure, never a buzz.
+     */
+    public boolean startDownlink(int sampleRate) {
+        final int VOICE_DOWNLINK = 3; // MediaRecorder.AudioSource.VOICE_DOWNLINK
+        try {
+            this.rate = sampleRate;
+            Context sys = systemContext();
+            fillAppInfo("com.android.shell");
+            AttributionSource attr = shellAttribution(Process.myUid(), "com.android.shell");
+            Context ctx = new FakeShellContext(sys, attr);
+
+            AudioFormat inFmt = new AudioFormat.Builder().setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build();
+            int buf = Math.max(
+                    AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO,
+                            AudioFormat.ENCODING_PCM_16BIT), 4096) * 4;
+
+            AudioRecord.Builder rb = new AudioRecord.Builder()
+                    .setAudioSource(VOICE_DOWNLINK)
+                    .setAudioFormat(inFmt)
+                    .setBufferSizeInBytes(buf);
+            // setContext is @SystemApi/hidden; the shell-attributed context is what lets the
+            // AppOps check pass (CAPTURE_AUDIO_OUTPUT is granted to com.android.shell).
+            AudioRecord.Builder.class.getMethod("setContext", Context.class).invoke(rb, ctx);
+            record = rb.build();
+
+            if (record.getState() != AudioRecord.STATE_INITIALIZED) {
+                lastError = "downlink sink did not initialise";
+                cleanup();
+                return false;
+            }
+            record.startRecording();
+            if (record.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+                lastError = "downlink opened but would not start";
+                cleanup();
+                return false;
+            }
+            return true;
+        } catch (Throwable t) {
+            lastError = String.valueOf(rootCause(t));
+            cleanup();
+            return false;
+        }
+    }
+
     /** Read PCM into [buf]; returns bytes read, 0 if none yet, negative on error. */
     public int read(byte[] buf) {
         AudioRecord r = record;

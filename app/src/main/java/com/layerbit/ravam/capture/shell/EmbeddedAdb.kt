@@ -152,7 +152,11 @@ object EmbeddedAdb {
      * session streaming the far-end PCM. Uses the `exec:` service with stderr dropped so
      * only raw PCM reaches the app.
      */
-    suspend fun openCaptureSession(context: Context, sampleRateHz: Int): PcmStreamSession? =
+    suspend fun openCaptureSession(
+        context: Context,
+        sampleRateHz: Int,
+        carrier: Boolean = false,
+    ): PcmStreamSession? =
         withContext(Dispatchers.IO) {
             if (!connect(context)) {
                 lastError = lastError ?: "No ADB connection — pair in Settings first"
@@ -161,8 +165,12 @@ object EmbeddedAdb {
             runCatching {
                 val mgr = AdbConnectionManager.getInstance(context)
                 val apk = context.applicationInfo.sourceDir
+                // For a carrier call the far end is the telephony downlink (VOICE_DOWNLINK);
+                // for a VoIP call it is the voice-communication playback mix. The CLI picks
+                // the source from the trailing "carrier" argument.
+                val mode = if (carrier) " carrier" else ""
                 val cmd = "exec:CLASSPATH=$apk app_process /system/bin " +
-                    "com.layerbit.ravam.capture.shell.VoipCaptureCli $sampleRateHz 2>/dev/null"
+                    "com.layerbit.ravam.capture.shell.VoipCaptureCli $sampleRateHz$mode 2>/dev/null"
                 val stream = mgr.openStream(cmd)
                 AdbPcmSession(stream, sampleRateHz)
             }.getOrElse {
