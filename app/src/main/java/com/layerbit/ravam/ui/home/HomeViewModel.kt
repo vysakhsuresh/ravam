@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.pm.PackageManager
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.layerbit.ravam.capture.CaptureTier
 import com.layerbit.ravam.capture.TierSelector
 import com.layerbit.ravam.consent.ConsentController
@@ -12,6 +13,7 @@ import com.layerbit.ravam.jurisdiction.JurisdictionReader
 import com.layerbit.ravam.jurisdiction.JurisdictionResolver
 import com.layerbit.ravam.service.RecordingLog
 import com.layerbit.ravam.service.RecordingService
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,9 +40,15 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     val recordingLog = RecordingLog.last
 
+    /** Set once we have tried to open the persistent port this session, so we don't keep retrying. */
+    @Volatile
+    private var armAttempted = false
+
     fun refresh() {
         val app = getApplication<Application>()
         val sel = selector.select()
+
+        maybeArmPersistentConnection()
 
         val mic = app.checkSelfPermission(Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
@@ -111,6 +119,33 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             jurisdiction = reader.resolveFor(null),
             isRecording = _state.value.isRecording,
         )
+    }
+
+    /**
+     * Open the persistent loopback port while the chance is there, so the privileged capture
+     * of the other side keeps working after Wi-Fi drops (on mobile data, the common case).
+     *
+     * The right moment is now: the user has turned the feature on, has paired, Wireless
+     * debugging is on (so a Wi-Fi connect can succeed), and the port is not already open.
+     * [com.layerbit.ravam.capture.shell.EmbeddedAdb.connect] with arming connects over Wi-Fi
+     * and asks adbd to hold the port — a one-time setup per boot, run off the UI thread and
+     * at most once a session, so repeatedly opening Home never restarts adbd in a loop.
+     */
+    private fun maybeArmPersistentConnection() {
+        if (armAttempted) return
+        val app = getApplication<Application>()
+        val adb = com.layerbit.ravam.capture.shell.EmbeddedAdb
+        val wanted = runCatching {
+            com.layerbit.ravam.data.SettingsStore(app).privilegedCapture &&
+                adb.state(app) != com.layerbit.ravam.capture.shell.EmbeddedAdb.State.NOT_PAIRED &&
+                adb.wirelessDebuggingOn(app) &&
+                !adb.loopbackReachable(app)
+        }.getOrDefault(false)
+        if (!wanted) return
+        armAttempted = true
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { adb.connect(app, armIfFresh = true) }
+        }
     }
 
     /** The prompt to show before a manual test recording, or null if none is needed here. */

@@ -133,13 +133,16 @@ class RecordingService : LifecycleService() {
             // Wireless debugging needs Wi-Fi, so on mobile data or a locked-down network it is
             // off and this is expected; the remedy is to turn it on or use speakerphone.
             val farNote: String? = if (!isTest && settings.privilegedCapture && !outcome.farSideViaPrivileged) {
-                if (!com.layerbit.ravam.capture.shell.EmbeddedAdb.wirelessDebuggingOn(this@RecordingService)) {
-                    "The other side was recorded through the microphone only, because Wireless " +
-                        "debugging is off (it needs Wi-Fi — it switches off on mobile data). Turn " +
-                        "it on in Developer options, or use speakerphone, to capture them clearly."
+                if (!com.layerbit.ravam.capture.shell.EmbeddedAdb.wirelessDebuggingOn(this@RecordingService) &&
+                    !com.layerbit.ravam.capture.shell.EmbeddedAdb.loopbackReachable(this@RecordingService)) {
+                    "The other side was recorded through the microphone only. Connect once over " +
+                        "Wi-Fi with Wireless debugging on — Ravam then keeps capturing the other " +
+                        "side on mobile data too, without needing Wi-Fi again until you restart " +
+                        "the phone."
                 } else {
-                    "The other side was recorded through the microphone only. Use speakerphone to " +
-                        "capture them clearly, or re-pair Wireless debugging for full-quality capture."
+                    "The other side was recorded through the microphone only. The privileged " +
+                        "connection could not be opened for this call; reopen Ravam over Wi-Fi to " +
+                        "re-establish it."
                 }
             } else {
                 null

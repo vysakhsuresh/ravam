@@ -11,6 +11,7 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import android.os.Build
+import com.layerbit.ravam.audio.EchoCanceller
 import com.layerbit.ravam.audio.LiveIntegrityMonitor
 import com.layerbit.ravam.audio.PcmSink
 import com.layerbit.ravam.audio.TwoVoiceAnalyzer
@@ -356,6 +357,14 @@ class CallRecorder(
         val nearLeveler = leveler(NEAR_BOOST_DB)
         val farLeveler = leveler(SHELL_BOOST_DB)
 
+        // Strip the far party's earpiece leak out of the near microphone, using the clean far
+        // stream as the reference. This is what removes the "double voice" — the far side
+        // heard once (delayed, faint) on the near channel and once (clean) on the far channel.
+        // The hardware echo canceller above handles it most of the time; this catches the
+        // times it does not (BOTIM, reported). With no far stream yet attached the reference
+        // is silent and the near channel passes through untouched.
+        val echo = EchoCanceller(sampleRateHz)
+
         // The verdict reads each channel raw — before levelling — so it describes what was
         // captured, not what was done to it.
         val keepSamples = sampleRateHz * MAX_ANALYSIS_SECONDS
@@ -400,16 +409,21 @@ class CallRecorder(
                     } else 0
                 }
 
+                // Remove the far leak from the near channel before anything else sees it, so
+                // the verdict, the file and the live mix all work from a near channel that is
+                // the local speaker alone — not the local speaker plus a ghost of the far one.
+                val micClean = echo.process(micS, farRaw, n)
+
                 // Live health sees a mono mix of the two sides; the verdict sees each side.
                 for (i in 0 until n) {
-                    var s = micS[i].toInt() + farRaw[i].toInt()
+                    var s = micClean[i].toInt() + farRaw[i].toInt()
                     if (s > 32767) s = 32767 else if (s < -32768) s = -32768
                     mono[i] = s.toShort()
                 }
                 monitor.offer(if (n == chunk) mono else mono.copyOf(n))
                 if (nearLen < keepSamples) {
                     val room = minOf(n, keepSamples - nearLen)
-                    micS.copyInto(analysisNear, nearLen, 0, room); nearLen += room
+                    micClean.copyInto(analysisNear, nearLen, 0, room); nearLen += room
                 }
                 if (farLen < keepSamples) {
                     val room = minOf(n, keepSamples - farLen)
@@ -418,11 +432,11 @@ class CallRecorder(
 
                 // To disk: levelled per channel, interleaved as L = near, R = far.
                 if (nearLeveler != null && farLeveler != null) {
-                    val l = nearLeveler.process(micS, n)
+                    val l = nearLeveler.process(micClean, n)
                     val r = farLeveler.process(farRaw, n)
                     writeStereo(sink, l, r, minOf(l.size, r.size))
                 } else {
-                    writeStereo(sink, micS, farRaw, n)
+                    writeStereo(sink, micClean, farRaw, n)
                 }
 
                 if (monitor.elapsedMs - lastReported >= 1_000) {
@@ -617,8 +631,18 @@ class CallRecorder(
         /** Far-side boost cap for leakage tiers (accessibility, mic) — the far side is faint. */
         const val LEAKAGE_BOOST_DB = 30.0
 
-        /** Far-side boost cap for the privileged tier — it arrives full-level, so lift gently. */
-        const val SHELL_BOOST_DB = 8.0
+        /**
+         * Far-side boost cap for the privileged tier.
+         *
+         * The privileged stream is clean — no earpiece, no room — so there is no noise floor
+         * to amplify, and the leveler is free to bring a quiet far side right up to its
+         * target. Apps play their far end at very different levels: BOTIM arrives near full
+         * scale and needs almost nothing, while Teams arrives far quieter and was left faint
+         * by the old 8 dB cap. The leveler only ever adds the gain needed to reach its target
+         * (−14 dBFS) and never overshoots, so a generous cap fixes the quiet apps without
+         * touching the loud ones. The noise-ceiling guard still prevents lifting a silent gap.
+         */
+        const val SHELL_BOOST_DB = 24.0
 
         /** Near-side boost cap on the stereo path — the close mic is already loud; only a
          *  gentle normalisation so a soft-spoken user is not left faint on the left channel. */

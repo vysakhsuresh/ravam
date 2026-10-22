@@ -21,7 +21,25 @@ object EmbeddedAdb {
 
     private const val PREFS = "ravam_adb"
     private const val KEY_PAIRED = "paired"
+    private const val KEY_TCP_PORT = "tcp_port"
     private const val TAG = "RavamAdb"
+
+    /**
+     * The fixed TCP port Ravam asks `adbd` to listen on so the privileged path survives the
+     * loss of Wi-Fi.
+     *
+     * Wireless Debugging (Android 11+) runs over Wi-Fi and the system switches it off the
+     * moment Wi-Fi drops — which is every call on mobile data, and exactly when the far side
+     * was going missing. But `adbd` can also listen the old way, on a fixed TCP port bound to
+     * every interface, reachable over the loopback address regardless of which network is up.
+     * This is what `adb tcpip` does. Once Ravam has a connection over Wi-Fi it asks `adbd` to
+     * open this port, then from then on reconnects to 127.0.0.1 here — no Wi-Fi, no companion
+     * app, no pairing again — until the next reboot. Re-arming after a reboot is the same
+     * one-time Wireless Debugging step as before.
+     */
+    private const val FIXED_TCP_PORT = 5555
+
+    private const val LOOPBACK = "127.0.0.1"
 
     @Volatile
     var lastError: String? = null
@@ -50,9 +68,31 @@ object EmbeddedAdb {
      */
     fun ready(context: Context): Boolean = when (state(context)) {
         State.CONNECTED -> true
-        State.PAIRED -> wirelessDebuggingOn(context)
+        // Ready if Wireless Debugging is on (we can connect over Wi-Fi), OR the persistent
+        // loopback port is actually listening right now — which is what keeps the privileged
+        // path available on mobile data, with Wireless Debugging switched off.
+        State.PAIRED -> wirelessDebuggingOn(context) || loopbackReachable(context)
         State.NOT_PAIRED -> false
     }
+
+    /**
+     * Is `adbd` listening on the persistent loopback port right now? A quick TCP probe — it
+     * proves the port is open without doing the full ADB handshake, which is enough to decide
+     * the privileged tier is worth selecting. Cheap and short, so it is safe off the UI.
+     */
+    fun loopbackReachable(context: Context): Boolean {
+        val port = storedPort(context)
+        if (port <= 0) return false
+        return runCatching {
+            java.net.Socket().use { s ->
+                s.connect(java.net.InetSocketAddress(LOOPBACK, port), 250)
+                true
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun storedPort(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(KEY_TCP_PORT, 0)
 
     /**
      * Is Developer options switched on? Wireless debugging lives under it, so this being
@@ -134,18 +174,100 @@ object EmbeddedAdb {
         return (ips + "127.0.0.1" + "localhost").distinct()
     }
 
-    /** Discover the debugging port over mDNS and connect. Safe to call repeatedly. */
-    suspend fun connect(context: Context): Boolean = withContext(Dispatchers.IO) {
-        runCatching {
-            val mgr = AdbConnectionManager.getInstance(context)
-            if (mgr.isConnected) return@runCatching true
-            mgr.autoConnect(context, CONNECT_TIMEOUT_MS)
-            mgr.isConnected
-        }.getOrElse {
+    /**
+     * Connect to the phone's own `adbd`. Safe to call repeatedly.
+     *
+     * Order matters: the persistent loopback port is tried first, because it is the one that
+     * works on mobile data. Only if that is not up do we fall back to Wireless Debugging over
+     * Wi-Fi (mDNS). After a fresh Wi-Fi connect, and when the loopback port is not already
+     * listening, [armPersistentPort] opens it so the *next* call — perhaps on mobile data —
+     * can take the loopback path.
+     *
+     * @param armIfFresh arm the persistent port after a fresh Wi-Fi connect. True from the
+     *   pairing/setup flows, which run while idle; false from the capture path, because arming
+     *   restarts `adbd` and would drop the stream we are about to open.
+     */
+    suspend fun connect(context: Context, armIfFresh: Boolean = true): Boolean = withContext(Dispatchers.IO) {
+        val mgr = runCatching { AdbConnectionManager.getInstance(context) }.getOrElse {
+            lastError = "Could not start the ADB client: ${it.message}"
+            return@withContext false
+        }
+        if (mgr.isConnected) return@withContext true
+
+        // 1. The persistent loopback port — independent of Wi-Fi.
+        val port = storedPort(context)
+        if (port > 0) {
+            val ok = runCatching { mgr.connect(LOOPBACK, port) }.getOrElse {
+                android.util.Log.i(TAG, "loopback connect $LOOPBACK:$port failed: ${it.message}")
+                false
+            }
+            if (ok && mgr.isConnected) {
+                lastError = null
+                return@withContext true
+            }
+        }
+
+        // 2. Wireless Debugging over Wi-Fi (mDNS discovery).
+        val onWifi = runCatching { mgr.autoConnect(context, CONNECT_TIMEOUT_MS) }.getOrElse {
             lastError = "Connect failed: ${it.message}"
             false
         }
+        if (!mgr.isConnected) return@withContext false
+
+        // 3. Having reached it over Wi-Fi, open the persistent port so mobile data works next
+        //    time. Best-effort: if arming cannot re-establish a connection it restores the
+        //    Wi-Fi one, so the caller is never left worse off than a plain connect.
+        if (armIfFresh && !loopbackReachable(context)) {
+            return@withContext armPersistentPort(context, mgr)
+        }
+        onWifi || mgr.isConnected
     }
+
+    /**
+     * Ask `adbd` to open [FIXED_TCP_PORT] and listen there persistently (the `adb tcpip`
+     * handshake), then reconnect over loopback. Called only while idle, never mid-capture,
+     * because the restart drops the current connection.
+     *
+     * Returns whether a connection is live afterwards. On failure to reconnect over loopback
+     * it falls back to Wi-Fi so the caller still ends connected where possible.
+     */
+    private suspend fun armPersistentPort(context: Context, mgr: AdbConnectionManager): Boolean =
+        withContext(Dispatchers.IO) {
+            // Store the port first: the restart drops this connection, and we want the next
+            // connect to try loopback even if the reconnect below races the restart.
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit().putInt(KEY_TCP_PORT, FIXED_TCP_PORT).apply()
+
+            // Trigger the restart. `tcpip:` is adbd's own service for this and needs no shell
+            // permission; the setprop form is a fallback for builds that do not expose it.
+            // Either one tears down the stream, so the failure we expect here is success.
+            runCatching { mgr.openStream("tcpip:$FIXED_TCP_PORT").close() }
+                .onFailure { android.util.Log.i(TAG, "tcpip service ended (expected): ${it.message}") }
+            runCatching { mgr.disconnect() }
+
+            // adbd needs a moment to rebind before the port accepts connections.
+            var waited = 0
+            while (waited < 2_000 && !loopbackReachable(context)) {
+                kotlinx.coroutines.delay(100)
+                waited += 100
+            }
+
+            // Reconnect over the now-open loopback port.
+            val viaLoopback = runCatching { mgr.connect(LOOPBACK, FIXED_TCP_PORT) }.getOrElse {
+                android.util.Log.w(TAG, "loopback reconnect after arm failed: ${it.message}")
+                false
+            }
+            if (viaLoopback && mgr.isConnected) {
+                android.util.Log.i(TAG, "armed persistent adbd on $LOOPBACK:$FIXED_TCP_PORT")
+                lastError = null
+                return@withContext true
+            }
+
+            // Loopback did not come up (device may prompt to allow, or block the restart).
+            // Restore the Wi-Fi connection so this call is no worse than a plain connect.
+            runCatching { mgr.autoConnect(context, CONNECT_TIMEOUT_MS) }
+            mgr.isConnected
+        }
 
     /**
      * Connect if needed, then launch the privileged capture as the shell UID and return a
@@ -158,7 +280,9 @@ object EmbeddedAdb {
         carrier: Boolean = false,
     ): PcmStreamSession? =
         withContext(Dispatchers.IO) {
-            if (!connect(context)) {
+            // armIfFresh = false: a capture must never restart adbd (it would drop this very
+            // stream). Arming is done by the pairing/setup flows while idle.
+            if (!connect(context, armIfFresh = false)) {
                 lastError = lastError ?: "No ADB connection — pair in Settings first"
                 return@withContext null
             }
