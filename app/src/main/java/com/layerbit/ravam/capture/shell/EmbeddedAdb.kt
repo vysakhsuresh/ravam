@@ -83,12 +83,24 @@ object EmbeddedAdb {
     fun loopbackReachable(context: Context): Boolean {
         val port = storedPort(context)
         if (port <= 0) return false
-        return runCatching {
-            java.net.Socket().use { s ->
-                s.connect(java.net.InetSocketAddress(LOOPBACK, port), 250)
-                true
-            }
-        }.getOrDefault(false)
+        val probe = {
+            runCatching {
+                java.net.Socket().use { s ->
+                    s.connect(java.net.InetSocketAddress(LOOPBACK, port), 250)
+                    true
+                }
+            }.getOrDefault(false)
+        }
+        // Callers include the call-state receiver and tier selection, which run on the main
+        // thread. A socket connect there throws NetworkOnMainThreadException (even to
+        // loopback), which would silently read as "not reachable" and drop a call to mic-only.
+        // So on the main thread, probe on a short-lived worker and wait for it.
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) return probe()
+        val result = java.util.concurrent.atomic.AtomicBoolean(false)
+        val t = Thread { result.set(probe()) }
+        t.start()
+        runCatching { t.join(400) }
+        return result.get()
     }
 
     private fun storedPort(context: Context): Int =

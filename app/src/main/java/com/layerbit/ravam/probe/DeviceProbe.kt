@@ -92,7 +92,12 @@ class DeviceProbe(private val context: Context) {
             com.layerbit.ravam.capture.shell.EmbeddedAdb.State.CONNECTED ->
                 return TierStatus.Ready
             com.layerbit.ravam.capture.shell.EmbeddedAdb.State.PAIRED ->
-                return if (adb.wirelessDebuggingOn(context)) {
+                // Ready over Wi-Fi (Wireless debugging on), or over the persistent loopback
+                // port Ravam arms after a Wi-Fi connect, which keeps working with Wireless
+                // debugging off and on mobile data until reboot. Must match EmbeddedAdb.ready:
+                // without the loopback check a carrier call fell to mic-only whenever the app
+                // process wasn't already holding a live connection.
+                return if (adb.wirelessDebuggingOn(context) || adb.loopbackReachable(context)) {
                     TierStatus.Ready
                 } else if (!adb.developerOptionsOn(context)) {
                     TierStatus.NeedsSetup(

@@ -79,21 +79,29 @@ class PhoneCallReceiver : BroadcastReceiver() {
     }
 
     /**
-     * Is the call's audio actually on a Bluetooth headset right now?
+     * Is the call's audio on (or about to be on) a Bluetooth headset?
      *
-     * This gates the privileged tier for carrier calls, so it must be the *real* route, not
-     * merely "a headset is paired". [AudioManager.getCommunicationDevice] is the platform's
-     * canonical answer to "where is communication audio going"; SCO is a secondary signal.
+     * This runs at OFFHOOK, which usually fires *before* the headset's call-audio link (SCO)
+     * is up, so the current route alone often still reads "earpiece" and the call wrongly
+     * fell to mic-only. A connected call-audio headset (SCO / LE Audio) is where telephony
+     * routes the call by default, so its presence counts too. A misread is safe: the carrier
+     * privileged path taps the downlink as a pure capture source; nothing is re-rendered into
+     * the call, so it cannot buzz. A2DP-only devices (music, no call audio) do not count.
      */
     private fun callIsOnBluetooth(context: Context): Boolean {
         val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             val type = runCatching { am.communicationDevice?.type }.getOrNull()
             if (type != null && type.isBluetoothRoute()) return true
+            val available = runCatching { am.availableCommunicationDevices }.getOrNull().orEmpty()
+            if (available.any { it.type.isBluetoothRoute() }) return true
         }
         @Suppress("DEPRECATION")
         if (runCatching { am.isBluetoothScoOn }.getOrDefault(false)) return true
-        return false
+        val outputs = runCatching {
+            am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).toList()
+        }.getOrDefault(emptyList())
+        return outputs.any { it.type.isBluetoothRoute() }
     }
 
     private fun Int.isBluetoothRoute(): Boolean = when (this) {
