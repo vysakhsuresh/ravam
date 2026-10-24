@@ -99,22 +99,17 @@ class RecordingService : LifecycleService() {
             // Ravam's own embedded-ADB pairing, fall back to the Shizuku app — and handed in
             // the moment it connects, which can be seconds later. No opening word is lost
             // waiting for a connection; the far side is promoted into the recording live.
-            if (tier == CaptureTier.PRIVILEGED_SHELL) {
-                // A carrier call (channel "Phone") taps the telephony downlink; a VoIP call
-                // taps the voice-communication playback mix. The Shizuku fallback only does
-                // the VoIP mix and re-renders it, so it is never used for a carrier call —
-                // that re-render is exactly what buzzes the far party.
-                val carrierCall = channel == "Phone"
+            // Never for a carrier call (channel "Phone"): the VoIP mix re-renders into the call
+            // and buzzes the far party, and the telephony-downlink tap crashes the audio DSP on
+            // Bluetooth and drops the call (see PhoneCallReceiver). Guarded here as well so no
+            // path can open either for a phone call.
+            if (tier == CaptureTier.PRIVILEGED_SHELL && channel != "Phone") {
                 launch(Dispatchers.IO) {
                     val session = com.layerbit.ravam.capture.shell.EmbeddedAdb.openCaptureSession(
-                        this@RecordingService, 16_000, carrier = carrierCall,
-                    ) ?: if (carrierCall) {
-                        null
-                    } else {
-                        com.layerbit.ravam.capture.shell.ShizukuShellCapture.openSession(
-                            this@RecordingService, 16_000,
-                        )
-                    }
+                        this@RecordingService, 16_000,
+                    ) ?: com.layerbit.ravam.capture.shell.ShizukuShellCapture.openSession(
+                        this@RecordingService, 16_000,
+                    )
                     if (session != null) r.attachFarSession(session)
                 }
             }
@@ -132,7 +127,13 @@ class RecordingService : LifecycleService() {
             // Say so on the recording, with the cause, so a weak far side is never a mystery.
             // Wireless debugging needs Wi-Fi, so on mobile data or a locked-down network it is
             // off and this is expected; the remedy is to turn it on or use speakerphone.
-            val farNote: String? = if (!isTest && settings.privilegedCapture && !outcome.farSideViaPrivileged) {
+            val farNote: String? = if (!isTest && activeChannel == "Phone") {
+                // Phone calls are always mic-only (see PhoneCallReceiver), so Wi-Fi advice
+                // would be wrong here. Explain the Bluetooth gap instead.
+                "Phone calls record the other side through the microphone. On a Bluetooth " +
+                    "headset the microphone can't hear them, so only your side is recorded. " +
+                    "Use the phone's earpiece for phone calls you need recorded in full."
+            } else if (!isTest && settings.privilegedCapture && !outcome.farSideViaPrivileged) {
                 if (!com.layerbit.ravam.capture.shell.EmbeddedAdb.wirelessDebuggingOn(this@RecordingService) &&
                     !com.layerbit.ravam.capture.shell.EmbeddedAdb.loopbackReachable(this@RecordingService)) {
                     "The other side was recorded through the microphone only. Connect once over " +

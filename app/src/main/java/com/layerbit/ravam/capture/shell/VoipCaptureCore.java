@@ -90,6 +90,10 @@ public final class VoipCaptureCore {
     }
 
     /**
+     * DO NOT CALL ON A LIVE CALL — currently unused. On the Moto G84 (Qualcomm) opening this
+     * while the call is on a Bluetooth headset crashes the audio DSP and the HAL ends the call
+     * (seen 2026-10-24, two of three calls dropped). Kept only for future bench testing.
+     *
      * Start capturing the far end of a *carrier* call, from the telephony downlink.
      *
      * Unlike {@link #start}, this opens no AudioPolicy and does no loop-back re-render: it is

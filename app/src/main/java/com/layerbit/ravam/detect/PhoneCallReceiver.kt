@@ -68,47 +68,15 @@ class PhoneCallReceiver : BroadcastReceiver() {
         val decision = RecordingGate.decide(context, settings, info)
         if (!decision.record) return
 
-        // A carrier call. On the handset the far end leaks into the mic for the accessibility
-        // tier. On a Bluetooth headset nothing leaks, so the far end is only reachable through
-        // the privileged tier — which, for a carrier call, taps the telephony downlink
-        // directly (RecordingService), with no re-render and so no buzz. Gate it strictly on
-        // the real Bluetooth route; a misread as Bluetooth is the only way this could buzz.
-        val onBluetooth = callIsOnBluetooth(context)
-        val tier = TierSelector(context).select(forVoip = false, onBluetooth = onBluetooth).tier
+        // A carrier call: never the privileged tier. Its carrier mode opens the telephony
+        // downlink (VOICE_DOWNLINK), and on the Moto G84 (Qualcomm) doing that while the call
+        // is on a Bluetooth headset crashes the audio DSP. The HAL then ends the call
+        // ("SSR/PDR occurred, end all calls"). Seen on-device 2026-10-24: two of three
+        // Bluetooth calls dropped seconds after capture started. A recorder must never drop a
+        // call, so carrier calls stay on the accessibility/mic path, which never touches the
+        // call's own audio.
+        val tier = TierSelector(context).select(forVoip = false).tier
         RecordingService.start(context, tier, info.label(), channel = "Phone")
-    }
-
-    /**
-     * Is the call's audio on (or about to be on) a Bluetooth headset?
-     *
-     * This runs at OFFHOOK, which usually fires *before* the headset's call-audio link (SCO)
-     * is up, so the current route alone often still reads "earpiece" and the call wrongly
-     * fell to mic-only. A connected call-audio headset (SCO / LE Audio) is where telephony
-     * routes the call by default, so its presence counts too. A misread is safe: the carrier
-     * privileged path taps the downlink as a pure capture source; nothing is re-rendered into
-     * the call, so it cannot buzz. A2DP-only devices (music, no call audio) do not count.
-     */
-    private fun callIsOnBluetooth(context: Context): Boolean {
-        val am = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            val type = runCatching { am.communicationDevice?.type }.getOrNull()
-            if (type != null && type.isBluetoothRoute()) return true
-            val available = runCatching { am.availableCommunicationDevices }.getOrNull().orEmpty()
-            if (available.any { it.type.isBluetoothRoute() }) return true
-        }
-        @Suppress("DEPRECATION")
-        if (runCatching { am.isBluetoothScoOn }.getOrDefault(false)) return true
-        val outputs = runCatching {
-            am.getDevices(android.media.AudioManager.GET_DEVICES_OUTPUTS).toList()
-        }.getOrDefault(emptyList())
-        return outputs.any { it.type.isBluetoothRoute() }
-    }
-
-    private fun Int.isBluetoothRoute(): Boolean = when (this) {
-        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-        android.media.AudioDeviceInfo.TYPE_BLE_HEADSET,
-        android.media.AudioDeviceInfo.TYPE_BLE_BROADCAST -> true
-        else -> false
     }
 
     private enum class Call { IDLE, RINGING, ACTIVE }

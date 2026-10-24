@@ -30,17 +30,12 @@ class TierSelector(context: Context) {
      *   For a VoIP call the privileged tier captures the voice-communication playback mix.
      *   For a carrier call on the handset that same mix would be re-rendered into the call
      *   and buzz the far party, so the privileged tier is excluded and the call falls to the
-     *   accessibility/mic path.
-     * @param onBluetooth true when the call's audio is on a Bluetooth headset. The privileged
-     *   tier is allowed for a carrier call here because the service captures the carrier's
-     *   telephony *downlink* directly (no re-render, no buzz), and it is the only way to reach
-     *   the far end on Bluetooth, where nothing leaks into the phone mic for the accessibility
-     *   tier to catch. (See RecordingService: a carrier call opens the downlink source.)
+     *   accessibility/mic path. (The telephony-downlink alternative crashes the audio DSP on
+     *   Bluetooth and drops the call — see PhoneCallReceiver — so it is not used either.)
      */
-    fun select(forVoip: Boolean = true, onBluetooth: Boolean = false): Selection {
-        val allowPrivileged = forVoip || onBluetooth
+    fun select(forVoip: Boolean = true): Selection {
         val ladder = probe.tiers().sortedBy { it.tier.rank }
-            .filter { allowPrivileged || it.tier != CaptureTier.PRIVILEGED_SHELL }
+            .filter { forVoip || it.tier != CaptureTier.PRIVILEGED_SHELL }
         val best = ladder.firstOrNull { it.isReady }
 
         if (best != null) {
